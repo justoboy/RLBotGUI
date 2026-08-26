@@ -700,7 +700,7 @@ def fetch_game_tick_packet_json():
 def get_tournament_bots():
     """
     Returns available bots for tournament selection.
-    Returns human and all scanned bots.
+    Returns human and all scanned bots (sorted alphabetically).
     """
     bots = scan_for_bots()
     # Add human option
@@ -711,7 +711,7 @@ def get_tournament_bots():
         'image': 'imgs/human.png'
     }
     # Convert bots to tournament participant format
-    participants = [human]
+    participants = []
     for bot in bots:
         participant = {
             'name': bot['name'],
@@ -724,6 +724,10 @@ def get_tournament_bots():
             'seed': 0
         }
         participants.append(participant)
+    # Sort bots alphabetically by name
+    participants.sort(key=lambda x: x['name'].lower())
+    # Add human at the top
+    participants.insert(0, human)
     return participants
 
 

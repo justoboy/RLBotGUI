@@ -452,3 +452,117 @@ def tournament_randomize_seeding() -> str:
         CURRENT_TOURNAMENT.matches = matches
     
     return tournament_save_state()
+
+
+TOURNAMENTS_LIST_KEY = "tournaments_list"
+
+
+@eel.expose
+def tournament_save_to_list() -> str:
+    """
+    Save current tournament to the saved tournaments list.
+    
+    Returns:
+        JSON string of tournament state
+    """
+    global CURRENT_TOURNAMENT
+    
+    if CURRENT_TOURNAMENT is None:
+        return json.dumps({'error': 'No tournament loaded'})
+    
+    settings = QSettings("rlbotgui", "tournament_save")
+    
+    # Get existing list
+    list_json = settings.value(TOURNAMENTS_LIST_KEY, type=str)
+    tournaments_list = json.loads(list_json) if list_json else []
+    
+    # Create tournament metadata
+    serialized = CURRENT_TOURNAMENT.to_dict()
+    tournament_meta = {
+        'tournament_id': CURRENT_TOURNAMENT.tournament_id,
+        'name': CURRENT_TOURNAMENT.name,
+        'format': CURRENT_TOURNAMENT.format,
+        'participants': [p.to_dict() for p in CURRENT_TOURNAMENT.participants],
+        'completed': CURRENT_TOURNAMENT.completed,
+        'save_data': json.dumps(serialized)
+    }
+    
+    # Check if tournament already exists in list
+    existing_index = None
+    for i, t in enumerate(tournaments_list):
+        if t['tournament_id'] == CURRENT_TOURNAMENT.tournament_id:
+            existing_index = i
+            break
+    
+    if existing_index is not None:
+        tournaments_list[existing_index] = tournament_meta
+    else:
+        tournaments_list.append(tournament_meta)
+    
+    # Save updated list
+    settings.setValue(TOURNAMENTS_LIST_KEY, json.dumps(tournaments_list))
+    
+    return json.dumps(serialized)
+
+
+@eel.expose
+def tournament_get_saved_list() -> str:
+    """
+    Get list of saved tournaments.
+    
+    Returns:
+        JSON string of tournaments list
+    """
+    settings = QSettings("rlbotgui", "tournament_save")
+    list_json = settings.value(TOURNAMENTS_LIST_KEY, type=str)
+    return list_json if list_json else "[]"
+
+
+@eel.expose
+def tournament_delete_from_list(tournament_id: str) -> str:
+    """
+    Delete a tournament from the saved list.
+    
+    Args:
+        tournament_id: ID of tournament to delete
+    
+    Returns:
+        Success message
+    """
+    settings = QSettings("rlbotgui", "tournament_save")
+    list_json = settings.value(TOURNAMENTS_LIST_KEY, type=str)
+    tournaments_list = json.loads(list_json) if list_json else []
+    
+    # Remove tournament from list
+    tournaments_list = [t for t in tournaments_list if t['tournament_id'] != tournament_id]
+    
+    # Save updated list
+    settings.setValue(TOURNAMENTS_LIST_KEY, json.dumps(tournaments_list))
+    
+    return json.dumps({'success': True})
+
+
+@eel.expose
+def tournament_load_from_id(tournament_id: str) -> str:
+    """
+    Load a tournament from the saved list by ID.
+    
+    Args:
+        tournament_id: ID of tournament to load
+    
+    Returns:
+        JSON string of tournament state
+    """
+    global CURRENT_TOURNAMENT
+    
+    settings = QSettings("rlbotgui", "tournament_save")
+    list_json = settings.value(TOURNAMENTS_LIST_KEY, type=str)
+    tournaments_list = json.loads(list_json) if list_json else []
+    
+    # Find tournament
+    for t in tournaments_list:
+        if t['tournament_id'] == tournament_id:
+            CURRENT_TOURNAMENT = TournamentState.from_dict(json.loads(t['save_data']))
+            return json.dumps(CURRENT_TOURNAMENT.to_dict())
+    
+    return json.dumps({'error': f'Tournament {tournament_id} not found'})

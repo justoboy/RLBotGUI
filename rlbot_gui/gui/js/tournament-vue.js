@@ -367,8 +367,9 @@ export default {
         
         async saveTournament() {
             try {
-                const result = await eel.tournament_save()();
+                const result = await eel.tournament_save_to_list()();
                 this.tournamentState = JSON.parse(result);
+                this.loadSavedTournaments();
             } catch (error) {
                 console.error('Error saving tournament:', error);
                 alert('Error saving tournament: ' + error);
@@ -411,8 +412,7 @@ export default {
         
         isParticipantSelected(bot) {
             return this.selectedParticipants.some(p =>
-                p.participant_id === bot.participant_id ||
-                p.path === bot.path
+                p.participant_id === bot.participant_id
             );
         },
         
@@ -497,11 +497,13 @@ export default {
         },
         
         loadSavedTournaments() {
-            // Load list of saved tournaments from localStorage or settings
+            // Load list of saved tournaments from backend
             try {
-                const saved = localStorage.getItem('rlbot_tournaments');
-                if (saved) {
-                    this.savedTournaments = JSON.parse(saved);
+                if (eel.tournament_get_saved_list) {
+                    const saved = eel.tournament_get_saved_list()();
+                    saved.then(result => {
+                        this.savedTournaments = JSON.parse(result);
+                    });
                 }
             } catch (error) {
                 console.error('Error loading saved tournaments:', error);
@@ -510,16 +512,26 @@ export default {
         },
         
         loadSavedTournament(tournament) {
-            // Save the tournament info to localStorage for loading
-            localStorage.setItem('rlbot_tournament_to_load', JSON.stringify(tournament));
-            // Trigger the load
-            this.loadTournament();
+            // Load the tournament from backend by ID
+            if (eel.tournament_load_from_id) {
+                eel.tournament_load_from_id(tournament.tournament_id)().then(result => {
+                    const state = JSON.parse(result);
+                    if (state.error) {
+                        alert('Error loading tournament: ' + state.error);
+                    } else {
+                        this.tournamentState = state;
+                    }
+                });
+            }
         },
         
         deleteSavedTournament(tournamentId) {
-            // Remove from saved tournaments list
-            this.savedTournaments = this.savedTournaments.filter(t => t.tournament_id !== tournamentId);
-            localStorage.setItem('rlbot_tournaments', JSON.stringify(this.savedTournaments));
+            // Remove from saved tournaments list via backend
+            if (eel.tournament_delete_from_list) {
+                eel.tournament_delete_from_list(tournamentId)().then(() => {
+                    this.loadSavedTournaments();
+                });
+            }
         },
         
         formatLabelFromData(format) {

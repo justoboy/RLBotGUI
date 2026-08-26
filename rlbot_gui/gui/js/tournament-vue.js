@@ -602,22 +602,10 @@ export default {
         // Expose methods for Python callbacks
         const self = this;
         
-        window.tournamentMatchStarted = function(matchId) {
-            console.log('Match started:', matchId);
-            // Match is running - keep the in-progress state
-            // Don't clear matchInProgress here, it's already set
-        };
-        
         window.tournamentMatchComplete = function(matchId, winnerName, score) {
             console.log('Match complete:', matchId, winnerName, score);
             // Match ended - show modal to record result
             self.showMatchResultModal(matchId);
-        };
-        
-        window.tournamentMatchStartFailed = function(error) {
-            console.error('Match start failed:', error);
-            self.matchInProgress = null;
-            alert('Failed to start match: ' + error);
         };
     }
 };

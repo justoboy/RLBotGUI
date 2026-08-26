@@ -314,19 +314,12 @@ def launch_tournament_match(bot_list: list, match_settings: dict, match_id: str)
     from rlbot_gui.match_runner.match_runner import start_match_helper
     from rlbot_gui.persistence.settings import load_settings, load_launcher_settings, launcher_preferences_from_map
     
-    # Override the matchStarted callback to call our tournament callback
-    original_match_started = None
-    original_match_start_failed = None
-    
     try:
         launcher_preference_map = load_launcher_settings()
         launcher_prefs = launcher_preferences_from_map(launcher_preference_map)
         start_match_helper(bot_list, match_settings, launcher_prefs)
-        # Match started successfully - notify frontend
-        eel.tournamentMatchStarted(match_id)
     except Exception as e:
         print(f"Error launching tournament match: {e}")
-        eel.tournamentMatchStartFailed(str(e))
 
 
 @eel.expose

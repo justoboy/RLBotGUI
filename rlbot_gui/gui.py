@@ -703,22 +703,25 @@ def get_tournament_bots():
     Returns human and all scanned bots (sorted alphabetically).
     """
     bots = scan_for_bots()
-    # Add human option
+    # Add human option with full participant data
     human = {
         'name': 'Human',
         'type': 'human',
         'participant_id': 'human',
+        'participant_type': 'human',
         'image': 'imgs/human.png'
     }
     # Convert bots to tournament participant format
     participants = []
     for bot in bots:
+        # Use full path as unique identifier to avoid conflicts with same-named bots
+        path = bot.get('path', '')
         participant = {
             'name': bot['name'],
-            'participant_id': bot.get('path', bot['name']).replace('\\', '/').split('/')[-1],
+            'participant_id': path.replace('\\', '/'),  # Use full path as unique ID
             'participant_type': 'bot',
             'bot_config': {
-                'path': bot.get('path', ''),
+                'path': path,
                 'config_name': bot.get('name', '')
             },
             'seed': 0

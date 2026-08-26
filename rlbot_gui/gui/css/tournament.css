@@ -419,8 +419,26 @@
 /* Bot Pool Wrapper */
 .bot-pool-wrapper {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    grid-template-columns: repeat(5, 1fr);
     gap: 10px;
+}
+
+@media (max-width: 1200px) {
+    .bot-pool-wrapper {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+@media (max-width: 992px) {
+    .bot-pool-wrapper {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .bot-pool-wrapper {
+        grid-template-columns: repeat(2, 1fr);
+    }
 }
 
 .tournament-bot-card {

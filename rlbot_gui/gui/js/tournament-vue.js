@@ -337,6 +337,15 @@ export default {
                 return;
             }
             
+            // Check for duplicate tournament name
+            const existingTournament = this.savedTournaments.find(
+                t => t.name.toLowerCase() === this.newTournament.name.toLowerCase()
+            );
+            if (existingTournament) {
+                alert(`A tournament named "${this.newTournament.name}" already exists. Please choose a different name.`);
+                return;
+            }
+            
             try {
                 const result = await eel.tournament_new(
                     this.newTournament.name,

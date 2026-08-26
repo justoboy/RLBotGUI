@@ -7,14 +7,56 @@ export default {
     name: 'tournament',
     template: /*html*/`
     <div class="tournament-page noscroll-flex flex-grow-1">
-        <!-- No Tournament State - Show Create Screen -->
-        <div v-if="!tournamentState" class="tournament-empty">
-            <div class="tournament-empty-content">
-                <h2>Tournament Mode</h2>
-                <p>Create a tournament bracket, add participants, and run matches!</p>
-                <b-button @click="showCreateModal" variant="success" size="lg">
-                    Create New Tournament
-                </b-button>
+        <!-- Landing Page - Show when no tournament is active -->
+        <div v-if="!tournamentState" class="tournament-landing noscroll-flex flex-grow-1">
+            <div class="tournament-landing-content">
+                <div class="landing-header">
+                    <h2>Tournament Mode</h2>
+                    <b-button @click="returnToHome" variant="secondary">
+                        <b-icon icon="arrow-left"></b-icon> Back to Main
+                    </b-button>
+                </div>
+                
+                <p class="landing-description">Create a tournament bracket, add participants, and run matches!</p>
+                
+                <div class="saved-tournaments">
+                    <h4 v-if="savedTournaments.length > 0">Saved Tournaments</h4>
+                    <div v-if="savedTournaments.length === 0" class="no-saved-tournaments">
+                        <p>No saved tournaments found.</p>
+                    </div>
+                    <div v-else class="saved-tournaments-list">
+                        <div
+                            v-for="tournament in savedTournaments"
+                            :key="tournament.tournament_id"
+                            class="saved-tournament-card"
+                            @click="loadSavedTournament(tournament)"
+                        >
+                            <div class="tournament-info-card">
+                                <h5>{{ tournament.name }}</h5>
+                                <span class="tournament-format-badge">{{ formatLabelFromData(tournament.format) }}</span>
+                                <span class="tournament-participants">{{ tournament.participants?.length || 0 }} participants</span>
+                                <span v-if="tournament.completed" class="tournament-completed">
+                                    <b-icon icon="trophy-fill" variant="warning"></b-icon> Completed
+                                </span>
+                                <span v-else class="tournament-in-progress">In Progress</span>
+                            </div>
+                            <div class="tournament-actions-card">
+                                <b-button @click.stop="loadSavedTournament(tournament)" variant="primary" size="sm">
+                                    Load
+                                </b-button>
+                                <b-button @click.stop="deleteSavedTournament(tournament.tournament_id)" variant="danger" size="sm">
+                                    <b-icon icon="trash"></b-icon>
+                                </b-button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="create-new-section">
+                    <b-button @click="showCreateModal" variant="success" size="lg">
+                        <b-icon icon="plus-circle"></b-icon> Create New Tournament
+                    </b-button>
+                </div>
             </div>
         </div>
 
@@ -34,7 +76,7 @@ export default {
                     </span>
                 </div>
                 <div class="tournament-actions">
-                    <b-button @click="deleteTournament" variant="secondary">
+                    <b-button @click="returnToLanding" variant="secondary">
                         <b-icon icon="arrow-left"></b-icon> Back
                     </b-button>
                     <b-button @click="saveTournament" variant="info">
@@ -237,6 +279,7 @@ export default {
             },
             currentMatch: null,
             matchInProgress: null,
+            savedTournaments: [],
         };
     },
     computed: {
@@ -441,13 +484,58 @@ export default {
             this.$router.replace('/');
         },
         
-        deleteTournament() {
-            // Delete the tournament and go back to the creation screen
+        returnToLanding() {
+            // Delete the tournament and go back to the landing page
             eel.tournament_delete();
             this.tournamentState = null;
+            this.loadSavedTournaments();
+        },
+        
+        deleteTournament() {
+            // Delete the tournament and go back to the landing page
+            eel.tournament_delete();
+            this.tournamentState = null;
+            this.loadSavedTournaments();
+        },
+        
+        loadSavedTournaments() {
+            // Load list of saved tournaments from localStorage or settings
+            try {
+                const saved = localStorage.getItem('rlbot_tournaments');
+                if (saved) {
+                    this.savedTournaments = JSON.parse(saved);
+                }
+            } catch (error) {
+                console.error('Error loading saved tournaments:', error);
+                this.savedTournaments = [];
+            }
+        },
+        
+        loadSavedTournament(tournament) {
+            // Save the tournament info to localStorage for loading
+            localStorage.setItem('rlbot_tournament_to_load', JSON.stringify(tournament));
+            // Trigger the load
+            this.loadTournament();
+        },
+        
+        deleteSavedTournament(tournamentId) {
+            // Remove from saved tournaments list
+            this.savedTournaments = this.savedTournaments.filter(t => t.tournament_id !== tournamentId);
+            localStorage.setItem('rlbot_tournaments', JSON.stringify(this.savedTournaments));
+        },
+        
+        formatLabelFromData(format) {
+            const labels = {
+                'single_elimination': 'Single Elimination',
+                'double_elimination': 'Double Elimination',
+                'round_robin': 'Round Robin'
+            };
+            return labels[format] || format;
         }
     },
     created() {
+        // Load saved tournaments list
+        this.loadSavedTournaments();
         // Load existing tournament if available
         this.loadTournament();
     },

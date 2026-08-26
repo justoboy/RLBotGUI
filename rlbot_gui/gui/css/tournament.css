@@ -272,6 +272,31 @@
     flex: 1;
 }
 
+/* Bot Pool Wrapper */
+.bot-pool-wrapper {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+}
+
+.tournament-bot-card {
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    padding: 10px;
+}
+
+.tournament-bot-card:hover {
+    border-color: #00d9ff;
+    transform: translateY(-2px);
+}
+
+.tournament-bot-card.selected {
+    border-color: #28a745;
+    background: rgba(40, 167, 69, 0.2);
+}
+
 /* Modal Styles */
 .participant-pool-selection {
     max-height: 300px;

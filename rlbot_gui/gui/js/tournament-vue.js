@@ -7,7 +7,7 @@ export default {
     name: 'tournament',
     template: /*html*/`
     <div class="tournament-page noscroll-flex flex-grow-1">
-        <!-- No Tournament State -->
+        <!-- No Tournament State - Show Create Screen -->
         <div v-if="!tournamentState" class="tournament-empty">
             <div class="tournament-empty-content">
                 <h2>Tournament Mode</h2>
@@ -34,7 +34,7 @@ export default {
                     </span>
                 </div>
                 <div class="tournament-actions">
-                    <b-button @click="returnToHome" variant="secondary">
+                    <b-button @click="deleteTournament" variant="secondary">
                         <b-icon icon="arrow-left"></b-icon> Back
                     </b-button>
                     <b-button @click="saveTournament" variant="info">
@@ -146,15 +146,17 @@ export default {
 
                 <b-form-group label="Select Participants from Pool" label-for="participant-pool">
                     <div class="participant-pool-selection">
-                        <bot-pool
-                            :bots="botPool"
-                            :scripts="[]"
-                            @bot-clicked="toggleParticipantSelection"
-                            :display-human="true"
-                            :favorites="[]"
-                            :multi-select="true"
-                            :selected-bots="selectedParticipants"
-                        />
+                        <div class="bot-pool-wrapper">
+                            <bot-card
+                                v-for="bot in botPool"
+                                :key="bot.participant_id || bot.path"
+                                :bot="bot"
+                                :draggable="false"
+                                class="tournament-bot-card"
+                                :class="{ 'selected': isParticipantSelected(bot) }"
+                                @click="toggleParticipantSelection(bot)"
+                            />
+                        </div>
                     </div>
                 </b-form-group>
 
@@ -366,6 +368,13 @@ export default {
             };
         },
         
+        isParticipantSelected(bot) {
+            return this.selectedParticipants.some(p =>
+                p.participant_id === bot.participant_id ||
+                p.path === bot.path
+            );
+        },
+        
         isMatchActive(match) {
             if (match.completed) return false;
             if (match.participant1 && match.participant2) return true;
@@ -430,6 +439,12 @@ export default {
         
         returnToHome() {
             this.$router.replace('/');
+        },
+        
+        deleteTournament() {
+            // Delete the tournament and go back to the creation screen
+            eel.tournament_delete();
+            this.tournamentState = null;
         }
     },
     created() {

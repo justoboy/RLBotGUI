@@ -79,9 +79,12 @@ export default {
                     <b-button @click="returnToLanding" variant="secondary">
                         <b-icon icon="arrow-left"></b-icon> Back
                     </b-button>
-                    <b-button @click="saveTournament" variant="info">
+                    <b-button @click="saveTournament" variant="info" v-if="!matchInProgress">
                         <b-icon :icon="isSaving ? 'check-circle-fill' : 'save'"></b-icon>
                         {{ isSaving ? 'Saved!' : 'Save' }}
+                    </b-button>
+                    <b-button @click="showMatchCompleteModal" variant="success" v-if="matchInProgress">
+                        <b-icon icon="check-circle"></b-icon> Match Complete
                     </b-button>
                 </div>
             </div>
@@ -104,12 +107,15 @@ export default {
                             <div class="bracket-round-matches">
                                 <div v-for="match in roundMatches" :key="match.match_id" 
                                      class="bracket-match" 
-                                     :class="{ 'completed': match.completed, 'active': isMatchActive(match) }"
+                                     :class="{ 'completed': match.completed, 'active': isMatchActive(match), 'in-progress': isMatchInProgress(match) }"
                                      @click="onMatchClick(match)">
                                     <div class="match-header">
                                         <span class="match-id">{{ match.match_id }}</span>
                                         <span v-if="match.completed" class="match-result">
                                             <b-icon icon="check-circle-fill" variant="success"></b-icon>
+                                        </span>
+                                        <span v-else-if="isMatchInProgress(match)" class="match-in-progress">
+                                            <b-icon icon="hourglass-split" variant="info"></b-icon> In Progress
                                         </span>
                                     </div>
                                     <div class="match-participant" :class="{ 'winner': match.winner === match.participant1 }">
@@ -232,7 +238,7 @@ export default {
         <!-- Match Result Modal -->
         <b-modal id="match-result-modal" title="Match Result" centered hide-footer>
             <div v-if="currentMatch">
-                <h4>{{ currentMatch.match_id }}: {{ currentMatch.participant1?.name }} vs {{ currentMatch.participant2?.name }}</h4>
+                <h4>{{ currentMatch.participant1?.name }} vs {{ currentMatch.participant2?.name }}</h4>
                 
                 <div class="match-result-options">
                     <b-button 
@@ -254,7 +260,7 @@ export default {
                 </div>
 
                 <b-alert show variant="info">
-                    Click a participant to launch the match, then record the winner.
+                    Match has ended. Click the winner to record the result.
                 </b-alert>
             </div>
             <div class="modal-footer">
@@ -439,27 +445,52 @@ export default {
             return false;
         },
         
+        isMatchInProgress(match) {
+            return this.matchInProgress === match.match_id;
+        },
+        
+        showMatchResultModal(matchId) {
+            // Find the match
+            const match = this.findMatchById(matchId);
+            if (match) {
+                this.currentMatch = match;
+                this.$bvModal.show('match-result-modal');
+            }
+        },
+        
+        findMatchById(matchId) {
+            for (const roundMatches of this.matchesByRound) {
+                for (const match of roundMatches) {
+                    if (match.match_id === matchId) {
+                        return match;
+                    }
+                }
+            }
+            return null;
+        },
+        
+        showMatchCompleteModal() {
+            if (!this.currentMatch) return;
+            this.$bvModal.show('match-result-modal');
+        },
+        
         async onMatchClick(match) {
             if (match.completed) return;
             if (!match.participant1 || !match.participant2) return;
             
-            // Start the match
+            // Start the match - it will launch automatically
             try {
-                const configResult = await eel.tournament_start_match(match.match_id)();
-                const config = JSON.parse(configResult);
+                const result = await eel.tournament_start_match(match.match_id)();
+                const response = JSON.parse(result);
                 
-                if (config.error) {
-                    alert(config.error);
+                if (response.error) {
+                    alert(response.error);
                     return;
                 }
                 
-                // Launch the match
+                // Match is launching - show in progress indicator
                 this.matchInProgress = match.match_id;
-                eel.tournament_match_started(match.match_id);
-                
-                // Store the match for result recording
                 this.currentMatch = match;
-                this.$bvModal.show('match-result-modal');
             } catch (error) {
                 console.error('Error starting match:', error);
                 alert('Error starting match: ' + error);
@@ -571,9 +602,22 @@ export default {
         // Expose methods for Python callbacks
         const self = this;
         
+        window.tournamentMatchStarted = function(matchId) {
+            console.log('Match started:', matchId);
+            // Match is running - keep the in-progress state
+            // Don't clear matchInProgress here, it's already set
+        };
+        
         window.tournamentMatchComplete = function(matchId, winnerName, score) {
             console.log('Match complete:', matchId, winnerName, score);
-            // This will be called when match ends
+            // Match ended - show modal to record result
+            self.showMatchResultModal(matchId);
+        };
+        
+        window.tournamentMatchStartFailed = function(error) {
+            console.error('Match start failed:', error);
+            self.matchInProgress = null;
+            alert('Failed to start match: ' + error);
         };
     }
 };

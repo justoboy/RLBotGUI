@@ -192,15 +192,15 @@ def tournament_get_state() -> Optional[str]:
 
 
 @eel.expose
-def tournament_start_match(match_id: str) -> Optional[str]:
+def tournament_start_match(match_id: str) -> str:
     """
-    Start a specific match in the tournament.
+    Start a specific match in the tournament. Launches the match automatically.
     
     Args:
         match_id: ID of the match to start
     
     Returns:
-        JSON string of match configuration or None
+        JSON string with match info and status
     """
     global CURRENT_TOURNAMENT
     
@@ -230,11 +230,115 @@ def tournament_start_match(match_id: str) -> Optional[str]:
     if match.participant1 is None or match.participant2 is None:
         return json.dumps({'error': f'Match {match_id} has no participants'})
     
-    # Generate match configuration
-    config = generate_match_config_from_match(match, CURRENT_TOURNAMENT.format)
-    config['match_id'] = match_id
+    # Build bot list for match runner
+    bot_list = []
     
-    return json.dumps(config)
+    # Add participant 1 to blue team
+    if match.participant1.participant_type == 'human':
+        bot_list.append({
+            'name': match.participant1.name,
+            'team': 0,
+            'type': 'human'
+        })
+    else:
+        bot_list.append({
+            'name': match.participant1.name,
+            'team': 0,
+            'type': 'rlbot',
+            'path': match.participant1.bot_config.get('path', '') if match.participant1.bot_config else '',
+            'skill': 10
+        })
+    
+    # Add participant 2 to orange team
+    if match.participant2.participant_type == 'human':
+        bot_list.append({
+            'name': match.participant2.name,
+            'team': 1,
+            'type': 'human'
+        })
+    else:
+        bot_list.append({
+            'name': match.participant2.name,
+            'team': 1,
+            'type': 'rlbot',
+            'path': match.participant2.bot_config.get('path', '') if match.participant2.bot_config else '',
+            'skill': 10
+        })
+    
+    # Build match settings
+    match_settings = {
+        'game_mode': 'soccer',
+        'map': 'DFHStadium',
+        'skip_replays': True,
+        'instant_start': False,
+        'enable_lockstep': False,
+        'enable_rendering': True,
+        'enable_state_setting': False,
+        'auto_save_replay': False,
+        'match_behavior': 'Restart',
+        'mutators': {
+            'match_length': '5:00',
+            'max_score': 10,
+            'overtime': True,
+            'series_length': 1,
+            'game_speed': 100,
+            'ball_max_speed': 1400,
+            'ball_type': 'Default',
+            'ball_weight': 0,
+            'ball_size': 1,
+            'ball_bounciness': 0,
+            'boost_amount': 100,
+            'rumble': False,
+            'boost_strength': 1,
+            'gravity': 1,
+            'demolish': True,
+            'respawn_time': 3
+        },
+        'scripts': []
+    }
+    
+    # Launch the match in a separate thread
+    eel.spawn(launch_tournament_match, bot_list, match_settings, match_id)
+    
+    return json.dumps({
+        'success': True,
+        'match_id': match_id,
+        'participants': [match.participant1.name, match.participant2.name]
+    })
+
+
+def launch_tournament_match(bot_list: list, match_settings: dict, match_id: str):
+    """
+    Launch the tournament match in a separate thread.
+    """
+    from rlbot_gui.match_runner.match_runner import start_match_helper
+    from rlbot_gui.persistence.settings import load_settings, load_launcher_settings, launcher_preferences_from_map
+    
+    # Override the matchStarted callback to call our tournament callback
+    original_match_started = None
+    original_match_start_failed = None
+    
+    try:
+        launcher_preference_map = load_launcher_settings()
+        launcher_prefs = launcher_preferences_from_map(launcher_preference_map)
+        start_match_helper(bot_list, match_settings, launcher_prefs)
+        # Match started successfully - notify frontend
+        eel.tournamentMatchStarted(match_id)
+    except Exception as e:
+        print(f"Error launching tournament match: {e}")
+        eel.tournamentMatchStartFailed(str(e))
+
+
+@eel.expose
+def tournament_match_started(match_id: str) -> None:
+    """
+    Called when a match is started. This is a placeholder for future functionality.
+    
+    Args:
+        match_id: ID of the match that was started
+    """
+    # Currently just a placeholder - can be used for tracking match state later
+    pass
 
 
 @eel.expose

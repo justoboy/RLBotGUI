@@ -6,6 +6,7 @@ function PythonPrint(message) {
 import Main from './main-vue.js'
 import Sandbox from './sandbox-vue.js'
 import Story from './story-mode.js'
+import Tournament from './tournament-vue.js'
 
 // eel does not provide an API for this. Close the browser when the websocket closes.
 document.addEventListener("DOMContentLoaded", e => eel._websocket.onclose = window.close.bind(window));
@@ -13,7 +14,8 @@ document.addEventListener("DOMContentLoaded", e => eel._websocket.onclose = wind
 const routes = [
     { path: '/', component: Main },
     { path: '/sandbox', component: Sandbox },
-    { path: '/story', component: Story }
+    { path: '/story', component: Story },
+    { path: '/tournament', component: Tournament }
 ];
 
 const router = new VueRouter({

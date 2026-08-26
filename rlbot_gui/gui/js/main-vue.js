@@ -55,10 +55,16 @@ export default {
 				State setting is turned off, sandbox won't work!
 			</b-tooltip>
 
-			<b-button 
+			<b-button
 				@click="$router.replace('/story')" variant="dark" class="ml-2"
 				>
 				Story Mode
+			</b-button>
+
+			<b-button
+				@click="$router.replace('/tournament')" variant="dark" class="ml-2"
+				>
+				Tournament
 			</b-button>
 
 			<b-dropdown right class="ml-4" variant="dark">

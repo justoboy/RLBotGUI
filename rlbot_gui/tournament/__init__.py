@@ -1,0 +1,3 @@
+"""
+Tournament module for RLBotGUI
+"""

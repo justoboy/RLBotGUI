@@ -41,6 +41,10 @@ from rlbot import gateway_util
 from rlbot_gui.story import story_runner
 ####
 
+#### LOAD TO EXPOSE TOURNAMENT
+from rlbot_gui.tournament import tournament_runner
+####
+
 DEFAULT_BOT_FOLDER = 'default_bot_folder'
 BOTPACK_FOLDER = 'RLBotPackDeletable'
 MAPPACK_FOLDER = 'RLBotMapPackDeletable'
@@ -688,8 +692,39 @@ def fetch_game_tick_packet_json():
     that are currently not needed by the GUI, e.g. boost pad state.
     """
     ctypes_packet = fetch_game_tick_packet()
-    dict_version = convert_packet_to_dict(ctypes_packet)
-    return dict_version  # This gets converted to json automatically.
+       dict_version = convert_packet_to_dict(ctypes_packet)
+       return dict_version  # This gets converted to json automatically.
+   
+   
+   @eel.expose
+   def get_tournament_bots():
+       """
+       Returns available bots for tournament selection.
+       Returns human and all scanned bots.
+       """
+       bots = scan_for_bots()
+       # Add human option
+       human = {
+           'name': 'Human',
+           'type': 'human',
+           'participant_id': 'human',
+           'image': 'imgs/human.png'
+       }
+       # Convert bots to tournament participant format
+       participants = [human]
+       for bot in bots:
+           participant = {
+               'name': bot['name'],
+               'participant_id': bot.get('path', bot['name']).replace('\\', '/').split('/')[-1],
+               'participant_type': 'bot',
+               'bot_config': {
+                   'path': bot.get('path', ''),
+                   'config_name': bot.get('name', '')
+               },
+               'seed': 0
+           }
+           participants.append(participant)
+       return participants
 
 
 should_quit = False

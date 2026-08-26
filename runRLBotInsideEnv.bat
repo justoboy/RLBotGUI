@@ -1,22 +1,14 @@
 @echo off
-set "VIRTUAL_ENV=\env"
+REM RLBotGUI Launcher
+REM This script sets up the Python 3.11 virtual environment and runs RLBotGUI
 
-REM Don't use () to avoid problems with them in %PATH%
-if defined _OLD_VIRTUAL_PYTHONHOME goto ENDIFVHOME
-    set "_OLD_VIRTUAL_PYTHONHOME=%PYTHONHOME%"
-:ENDIFVHOME
+REM First, run the setup script to create/verify the venv
+call "%~dp0setup_venv.bat"
+if errorlevel 1 (
+    echo Setup failed!
+    pause
+    exit /b 1
+)
 
-set PYTHONHOME=
-
-REM if defined _OLD_VIRTUAL_PATH (
-if not defined _OLD_VIRTUAL_PATH goto ENDIFVPATH1
-    set "PATH=%_OLD_VIRTUAL_PATH%"
-:ENDIFVPATH1
-REM ) else (
-if defined _OLD_VIRTUAL_PATH goto ENDIFVPATH2
-    set "_OLD_VIRTUAL_PATH=%PATH%"
-:ENDIFVPATH2
-
-set "PATH=%VIRTUAL_ENV%\Scripts;%PATH%"
-
-.\env\Scripts\python.exe run.py
+REM Now run the GUI using the venv Python
+"%~dp0venv\Scripts\python.exe" "%~dp0run.py"

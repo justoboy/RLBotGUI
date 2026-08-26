@@ -80,7 +80,8 @@ export default {
                         <b-icon icon="arrow-left"></b-icon> Back
                     </b-button>
                     <b-button @click="saveTournament" variant="info">
-                        <b-icon icon="save"></b-icon> Save
+                        <b-icon :icon="isSaving ? 'check-circle-fill' : 'save'"></b-icon>
+                        {{ isSaving ? 'Saved!' : 'Save' }}
                     </b-button>
                 </div>
             </div>
@@ -278,6 +279,7 @@ export default {
             currentMatch: null,
             matchInProgress: null,
             savedTournaments: [],
+            isSaving: false,
         };
     },
     computed: {
@@ -375,13 +377,19 @@ export default {
         },
         
         async saveTournament() {
+            this.isSaving = true;
             try {
                 const result = await eel.tournament_save_to_list()();
                 this.tournamentState = JSON.parse(result);
                 this.loadSavedTournaments();
+                // Reset saving state after 2 seconds
+                setTimeout(() => {
+                    this.isSaving = false;
+                }, 2000);
             } catch (error) {
                 console.error('Error saving tournament:', error);
                 alert('Error saving tournament: ' + error);
+                this.isSaving = false;
             }
         },
         

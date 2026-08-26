@@ -566,3 +566,15 @@ def tournament_load_from_id(tournament_id: str) -> str:
             return json.dumps(CURRENT_TOURNAMENT.to_dict())
     
     return json.dumps({'error': f'Tournament {tournament_id} not found'})
+
+
+@eel.expose
+def tournament_match_started(match_id: str) -> None:
+    """
+    Called when a match is started. This is a placeholder for future functionality.
+    
+    Args:
+        match_id: ID of the match that was started
+    """
+    # Currently just a placeholder - can be used for tracking match state later
+    pass

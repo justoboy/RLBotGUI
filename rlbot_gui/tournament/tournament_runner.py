@@ -267,7 +267,7 @@ def tournament_start_match(match_id: str) -> str:
     
     # Build match settings
     match_settings = {
-        'game_mode': 'soccer',
+        'game_mode': 'Soccer',
         'map': 'DFHStadium',
         'skip_replays': True,
         'instant_start': False,
@@ -277,22 +277,22 @@ def tournament_start_match(match_id: str) -> str:
         'auto_save_replay': False,
         'match_behavior': 'Restart',
         'mutators': {
-            'match_length': '5:00',
-            'max_score': 10,
-            'overtime': True,
-            'series_length': 1,
-            'game_speed': 100,
-            'ball_max_speed': 1400,
+            'match_length': '5 Minutes',
+            'max_score': '5 Goals',
+            'overtime': 'Unlimited',
+            'series_length': 'Unlimited',
+            'game_speed': 'Default',
+            'ball_max_speed': 'Default',
             'ball_type': 'Default',
-            'ball_weight': 0,
-            'ball_size': 1,
-            'ball_bounciness': 0,
-            'boost_amount': 100,
-            'rumble': False,
-            'boost_strength': 1,
-            'gravity': 1,
-            'demolish': True,
-            'respawn_time': 3
+            'ball_weight': 'Default',
+            'ball_size': 'Default',
+            'ball_bounciness': 'Default',
+            'boost_amount': 'Default',
+            'rumble': 'None',
+            'boost_strength': '1x',
+            'gravity': 'Default',
+            'demolish': 'Default',
+            'respawn_time': '3 Seconds'
         },
         'scripts': []
     }
@@ -314,12 +314,20 @@ def launch_tournament_match(bot_list: list, match_settings: dict, match_id: str)
     from rlbot_gui.match_runner.match_runner import start_match_helper
     from rlbot_gui.persistence.settings import load_settings, load_launcher_settings, launcher_preferences_from_map
     
+    print(f"DEBUG: launch_tournament_match called with match_id={match_id}")
+    print(f"DEBUG: bot_list={bot_list}")
+    print(f"DEBUG: match_settings={match_settings}")
+    
     try:
         launcher_preference_map = load_launcher_settings()
         launcher_prefs = launcher_preferences_from_map(launcher_preference_map)
+        print(f"DEBUG: About to call start_match_helper")
         start_match_helper(bot_list, match_settings, launcher_prefs)
+        print(f"DEBUG: start_match_helper returned")
     except Exception as e:
         print(f"Error launching tournament match: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 @eel.expose

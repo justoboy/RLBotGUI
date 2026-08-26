@@ -251,3 +251,106 @@ rlbot_gui/
 
 1. Begin implementation with Phase 1 (single elimination)
 2. Add round robin and double elimination in future iterations
+
+## Tournament Mutator Values Reference
+
+For future implementation of custom mutator settings in tournaments, use these valid values from RLBot:
+
+### Match Length
+- `'5 Minutes'`
+- `'10 Minutes'`
+- `'20 Minutes'`
+- `'Unlimited'`
+
+### Max Score
+- `'Unlimited'`
+- `'1 Goal'`
+- `'3 Goals'`
+- `'5 Goals'`
+
+### Overtime
+- `'Unlimited'`
+- `'+5 Max, First Score'`
+- `'+5 Max, Random Team'`
+
+### Series Length
+- `'Unlimited'`
+- `'3 Games'`
+- `'5 Games'`
+- `'7 Games'`
+
+### Game Speed
+- `'Default'`
+- `'Slo-Mo'`
+- `'Time Warp'`
+
+### Boost Amount
+- `'Default'`
+- `'Unlimited'`
+- `'Recharge (Slow)'`
+- `'Recharge (Fast)'`
+- `'No Boost'`
+
+### Rumble
+- `'None'`
+- `'Default'`
+- `'Slow'`
+- `'Civilized'`
+- `'Destruction Derby'`
+- `'Spring Loaded'`
+- `'Spikes Only'`
+- `'Spike Rush'`
+
+### Ball Max Speed
+- `'Default'`
+- `'Slow'`
+- `'Fast'`
+- `'Super Fast'`
+
+### Ball Type
+- `'Default'`
+- `'Cube'`
+- `'Puck'`
+- `'Basketball'`
+
+### Ball Weight
+- `'Default'`
+- `'Light'`
+- `'Heavy'`
+- `'Super Light'`
+
+### Ball Size
+- `'Default'`
+- `'Small'`
+- `'Large'`
+- `'Gigantic'`
+
+### Ball Bounciness
+- `'Default'`
+- `'Low'`
+- `'High'`
+- `'Super High'`
+
+### Gravity
+- `'Default'`
+- `'Low'`
+- `'High'`
+- `'Super High'`
+
+### Demolish
+- `'Default'`
+- `'Disabled'`
+- `'Friendly Fire'`
+- `'On Contact'`
+- `'On Contact (FF)'`
+
+### Respawn Time
+- `'3 Seconds'`
+- `'2 Seconds'`
+- `'1 Second'`
+- `'Disable Goal Reset'`
+
+### Existing Match Behavior
+- `'Restart If Different'`
+- `'Restart'`
+- `'Continue And Spawn'`

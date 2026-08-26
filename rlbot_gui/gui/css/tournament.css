@@ -385,10 +385,31 @@
 .participant-item {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 10px;
-    padding: 10px;
+    padding: 12px 15px;
     background: rgba(255, 255, 255, 0.05);
     border-radius: 8px;
+    transition: background 0.2s ease;
+}
+
+.participant-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.participant-name {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    font-size: 1rem;
+    color: #fff;
+    font-weight: 500;
+}
+
+.participant-icon {
+    font-size: 1.2rem;
+    color: #00d9ff;
 }
 
 .participant-card {

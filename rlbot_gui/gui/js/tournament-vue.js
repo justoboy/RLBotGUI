@@ -136,22 +136,20 @@ export default {
                 <!-- Participants Panel -->
                 <div class="participants-panel">
                     <div class="panel-header">
-                        <h4>Participants</h4>
+                        <h4>Participants ({{ tournamentState.participants.length }})</h4>
                         <b-button @click="showAddParticipant" variant="outline-success" size="sm" v-if="!tournamentState.completed">
                             <b-icon icon="plus"></b-icon> Add
                         </b-button>
                     </div>
                     <div class="participants-list">
                         <div v-for="participant in tournamentState.participants" :key="participant.participant_id" class="participant-item">
-                            <bot-card 
-                                :bot="participantToBot(participant)" 
-                                :draggable="true"
-                                @dragstart="onParticipantDrag(participant)"
-                                class="participant-card"
-                            />
-                            <b-button 
-                                @click="removeParticipant(participant.participant_id)" 
-                                variant="outline-danger" 
+                            <div class="participant-name">
+                                <b-icon :icon="participant.participant_type === 'human' ? 'person-fill' : 'cpu-fill'" class="participant-icon"></b-icon>
+                                {{ participant.name }}
+                            </div>
+                            <b-button
+                                @click="removeParticipant(participant.participant_id)"
+                                variant="outline-danger"
                                 size="sm"
                                 v-if="!tournamentState.completed"
                             >

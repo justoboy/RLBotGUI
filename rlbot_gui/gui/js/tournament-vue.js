@@ -72,7 +72,7 @@ export default {
                         Winner: {{ tournamentState.winner.name }}
                     </span>
                     <span class="tournament-status" v-else>
-                        Round {{ tournamentState.current_round }}
+                        {{ getCurrentRoundName() }}
                     </span>
                 </div>
                 <div class="tournament-actions">
@@ -103,7 +103,7 @@ export default {
                     <div class="bracket-tree noscroll-flex">
                         <!-- Group matches by round -->
                         <div v-for="(roundMatches, roundIndex) in matchesByRound" :key="roundIndex" class="bracket-round">
-                            <h5 class="round-title">Round {{ roundIndex + 1 }}</h5>
+                            <h5 class="round-title">{{ getRoundName(roundMatches[0]?.round_num, roundMatches) }}</h5>
                             <div class="bracket-round-matches">
                                 <div v-for="match in roundMatches" :key="match.match_id" 
                                      class="bracket-match" 
@@ -118,50 +118,18 @@ export default {
                                             <b-icon icon="hourglass-split" variant="info"></b-icon> In Progress
                                         </span>
                                     </div>
-                                    <div class="match-participant" :class="{ 'winner': match.winner === match.participant1 }">
-                                        <span v-if="match.participant1">
-                                            {{ match.participant1.name }}
-                                        </span>
+                                    <div class="match-players">
+                                        <span v-if="match.participant1">{{ match.participant1.name }}</span>
                                         <span v-else class="placeholder">Waiting...</span>
-                                    </div>
-                                    <div class="match-vs">VS</div>
-                                    <div class="match-participant" :class="{ 'winner': match.winner === match.participant2 }">
-                                        <span v-if="match.participant2">
-                                            {{ match.participant2.name }}
-                                        </span>
+                                        <span class="match-vs-inline">vs</span>
+                                        <span v-if="match.participant2">{{ match.participant2.name }}</span>
                                         <span v-else class="placeholder">Waiting...</span>
                                     </div>
                                     <div v-if="match.score" class="match-score">
-                                        <span>{{ match.score[0] }} - {{ match.score[1] }}</span>
+                                        {{ match.score[0] }} - {{ match.score[1] }}
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Participants Panel -->
-                <div class="participants-panel">
-                    <div class="panel-header">
-                        <h4>Participants ({{ tournamentState.participants.length }})</h4>
-                        <b-button @click="showAddParticipant" variant="outline-success" size="sm" v-if="!tournamentState.completed">
-                            <b-icon icon="plus"></b-icon> Add
-                        </b-button>
-                    </div>
-                    <div class="participants-list">
-                        <div v-for="participant in tournamentState.participants" :key="participant.participant_id" class="participant-item">
-                            <div class="participant-name">
-                                <b-icon :icon="participant.participant_type === 'human' ? 'person-fill' : 'cpu-fill'" class="participant-icon"></b-icon>
-                                {{ participant.name }}
-                            </div>
-                            <b-button
-                                @click="removeParticipant(participant.participant_id)"
-                                variant="outline-danger"
-                                size="sm"
-                                v-if="!tournamentState.completed"
-                            >
-                                <b-icon icon="x"></b-icon>
-                            </b-button>
                         </div>
                     </div>
                 </div>
@@ -300,7 +268,7 @@ export default {
         },
         matchesByRound() {
             if (!this.tournamentState) return [];
-            
+  
             const rounds = {};
             for (const match of this.tournamentState.matches) {
                 if (!rounds[match.round_num]) {
@@ -308,11 +276,91 @@ export default {
                 }
                 rounds[match.round_num].push(match);
             }
-            
+  
             return Object.values(rounds);
+        },
+        currentRound() {
+            if (!this.tournamentState || !this.tournamentState.matches) return 1;
+            
+            // Find the first round that has at least one incomplete match
+            // or if all matches in a round are complete, move to next round
+            const matchesByRoundNum = {};
+            for (const match of this.tournamentState.matches) {
+                if (!matchesByRoundNum[match.round_num]) {
+                    matchesByRoundNum[match.round_num] = [];
+                }
+                matchesByRoundNum[match.round_num].push(match);
+            }
+            
+            // Sort round numbers
+            const roundNumbers = Object.keys(matchesByRoundNum).map(Number).sort((a, b) => a - b);
+            
+            // Find the first round with incomplete matches
+            for (const roundNum of roundNumbers) {
+                const roundMatches = matchesByRoundNum[roundNum];
+                const hasIncomplete = roundMatches.some(m => !m.completed);
+                if (hasIncomplete) {
+                    return roundNum;
+                }
+            }
+            
+            // All rounds complete - return the last round
+            return roundNumbers.length > 0 ? roundNumbers[roundNumbers.length - 1] : 1;
         }
     },
     methods: {
+        getRoundName(roundNum, roundMatches) {
+            if (!roundNum || !roundMatches) return `Round ${roundNum || 1}`;
+            
+            // Get total number of rounds
+            if (!this.tournamentState || !this.tournamentState.matches) {
+                return `Round ${roundNum}`;
+            }
+            
+            // Find total rounds by getting the max round number
+            const allRounds = new Set(this.tournamentState.matches.map(m => m.round_num));
+            const totalRounds = Math.max(...allRounds);
+            
+            // Calculate this round's position from the end
+            const roundsFromEnd = totalRounds - roundNum + 1;
+            
+            // Name the last few rounds specially
+            if (roundsFromEnd === 1) {
+                return 'Finals';
+            } else if (roundsFromEnd === 2) {
+                return 'Semi-Finals';
+            } else if (roundsFromEnd === 3) {
+                return 'Quarter-Finals';
+            } else {
+                return `Round ${roundNum}`;
+            }
+        },
+        getCurrentRoundName() {
+            if (!this.tournamentState || !this.tournamentState.matches) return 'Round 1';
+            
+            // Find the first round with incomplete matches
+            const matchesByRoundNum = {};
+            for (const match of this.tournamentState.matches) {
+                if (!matchesByRoundNum[match.round_num]) {
+                    matchesByRoundNum[match.round_num] = [];
+                }
+                matchesByRoundNum[match.round_num].push(match);
+            }
+            
+            const roundNumbers = Object.keys(matchesByRoundNum).map(Number).sort((a, b) => a - b);
+            
+            for (const roundNum of roundNumbers) {
+                const roundMatches = matchesByRoundNum[roundNum];
+                const hasIncomplete = roundMatches.some(m => !m.completed);
+                if (hasIncomplete) {
+                    return this.getRoundName(roundNum, roundMatches);
+                }
+            }
+            
+            // All rounds complete - show the final round name
+            const lastRound = roundNumbers[roundNumbers.length - 1];
+            return this.getRoundName(lastRound, matchesByRoundNum[lastRound]);
+        },
         async showCreateModal() {
             await this.loadBotPool();
             this.$bvModal.show('create-tournament-modal');
@@ -409,20 +457,6 @@ export default {
             }
         },
         
-        async removeParticipant(participantId) {
-            try {
-                const result = await eel.tournament_remove_participant(participantId)();
-                this.tournamentState = JSON.parse(result);
-            } catch (error) {
-                console.error('Error removing participant:', error);
-                alert('Error removing participant: ' + error);
-            }
-        },
-        
-        showAddParticipant() {
-            alert('Add participant functionality coming soon!');
-        },
-        
         participantToBot(participant) {
             return {
                 name: participant.name,
@@ -478,19 +512,63 @@ export default {
             if (match.completed) return;
             if (!match.participant1 || !match.participant2) return;
             
-            // Start the match - it will launch automatically
+            // Start the match - it will launch automatically and record the winner
             try {
                 const result = await eel.tournament_start_match(match.match_id)();
                 const response = JSON.parse(result);
-                
+              
                 if (response.error) {
                     alert(response.error);
                     return;
                 }
-                
+              
                 // Match is launching - show in progress indicator
                 this.matchInProgress = match.match_id;
                 this.currentMatch = match;
+                
+                // Poll for tournament state update (match completion)
+                const pollInterval = setInterval(async () => {
+                    try {
+                        // Fetch fresh state from backend on each poll
+                        const freshState = await eel.tournament_get_state()();
+                        if (!freshState) {
+                            console.log('Polling: No state returned');
+                            return;
+                        }
+                        
+                        const currentState = JSON.parse(freshState);
+                        
+                        // Check both matches and losers_bracket_matches
+                        let updatedMatch = null;
+                        if (currentState.matches && Array.isArray(currentState.matches)) {
+                            updatedMatch = currentState.matches.find(m => m.match_id === match.match_id);
+                        }
+                        if (!updatedMatch && currentState.losers_bracket_matches && Array.isArray(currentState.losers_bracket_matches)) {
+                            updatedMatch = currentState.losers_bracket_matches.find(m => m.match_id === match.match_id);
+                        }
+
+                        if (updatedMatch && updatedMatch.completed) {
+                            // Match completed - update the tournament state
+                            this.tournamentState = currentState;
+                            this.matchInProgress = null;
+                            this.currentMatch = null;
+                            clearInterval(pollInterval);
+                            console.log('Match completed, tournament completed:', currentState.completed);
+
+                            // Check if tournament is complete - just update state, no alert needed
+                            if (currentState.completed) {
+                                console.log('Tournament Complete! Winner:', currentState.winner.name);
+                            }
+                        }
+                    } catch (e) {
+                        console.log('Polling error:', e);
+                    }
+                }, 1000);
+                
+                // Stop polling after 5 minutes
+                setTimeout(() => {
+                    clearInterval(pollInterval);
+                }, 300000);
             } catch (error) {
                 console.error('Error starting match:', error);
                 alert('Error starting match: ' + error);
@@ -513,7 +591,7 @@ export default {
                 this.$bvModal.hide('match-result-modal');
                 
                 if (this.tournamentState.completed) {
-                    alert(`Tournament Complete! Winner: ${this.tournamentState.winner.name}`);
+                    console.log('Tournament Complete! Winner:', this.tournamentState.winner.name);
                 }
             } catch (error) {
                 console.error('Error recording result:', error);
@@ -599,13 +677,6 @@ export default {
     },
     
     mounted() {
-        // Expose methods for Python callbacks
-        const self = this;
-        
-        window.tournamentMatchComplete = function(matchId, winnerName, score) {
-            console.log('Match complete:', matchId, winnerName, score);
-            // Match ended - show modal to record result
-            self.showMatchResultModal(matchId);
-        };
+        // No callbacks needed - match completion is detected via polling
     }
 };

@@ -356,12 +356,28 @@
     padding: 5px;
 }
 
+.match-players {
+    text-align: center;
+    font-size: 0.9rem;
+    color: #fff;
+    padding: 5px 0;
+}
+
+.match-vs-inline {
+    color: #666;
+    margin: 0 8px;
+    font-size: 0.85rem;
+}
+
 .match-score {
     text-align: center;
-    font-size: 1.2rem;
+    font-size: 1.1rem;
     font-weight: bold;
     color: #00d9ff;
-    margin-top: 10px;
+    margin-top: 8px;
+    padding: 4px 0;
+    background: rgba(0, 217, 255, 0.1);
+    border-radius: 4px;
 }
 
 /* Participants Panel */

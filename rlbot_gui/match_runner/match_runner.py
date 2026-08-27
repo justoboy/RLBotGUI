@@ -230,6 +230,44 @@ def start_match_helper(bot_list: List[dict], match_settings: dict, launcher_pref
     # Note that we are not calling infinite_loop because that is not compatible with the way eel works!
     # Instead we will reproduce the important behavior from infinite_loop inside this file.
     eel.matchStarted()
+    
+    # Poll for match end and collect final results
+    try:
+        from rlbot.utils.structures.game_data_struct import GameTickPacket
+        final_packet = None
+        while True:
+            sm.try_recieve_agent_metadata()
+            # Check if match has ended by getting the current packet
+            try:
+                packet = GameTickPacket()
+                sm.game_interface.fresh_live_data_packet(packet, 1000, 0)
+                if packet.game_info.is_match_ended:
+                    final_packet = packet
+                    break
+            except Exception as pkt_err:
+                # Packet might not be available yet, continue polling
+                pass
+            
+            if not sm.has_started:
+                break
+                
+            import time
+            time.sleep(0.1)
+        
+        # Return final packet data if available
+        if final_packet is not None:
+            # Extract team scores from the final packet
+            team_scores = []
+            for team in final_packet.teams:
+                team_scores.append({
+                    'team_index': team.team_index,
+                    'score': team.score
+                })
+            return team_scores
+        return []
+    except Exception as e:
+        print(f"Error polling for match end: {e}")
+        return []
 
 
 def do_infinite_loop_content():

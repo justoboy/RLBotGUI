@@ -33,8 +33,6 @@ Main component with sub-components:
    - Participant count auto-adjustment (2, 4, 8, 16, 32)
 
 2. **Participant Management**
-   - Add/remove bots from pool (reuse bot-card-vue.js)
-   - Add/remove humans from pool
    - Seed participants manually or randomly
    - Visual pool list with drag-to-reorder for seeding
 
@@ -354,3 +352,25 @@ For future implementation of custom mutator settings in tournaments, use these v
 - `'Restart If Different'`
 - `'Restart'`
 - `'Continue And Spawn'`
+
+## Implementation Notes & Changes from Plan
+
+During implementation, the following deviations from the original plan were made:
+
+### UI Changes
+1. **Simplified Match Display**: Changed from stacked participant/score layout to inline "Bot1 vs Bot2" with score below for better readability
+2. **Removed Participants Panel**: The participants panel was removed from the active tournament view to give more space for the bracket display
+3. **Dynamic Round Naming**: Rounds are now named based on their position from the end (Quarter-Finals, Semi-Finals, Finals) instead of just "Round X"
+4. **No Add/Remove Participants Mid-Tournament**: To prevent issues with bracket integrity, participants can only be added during tournament creation, not during an active tournament
+
+### Bug Fixes
+1. **Premature Tournament Completion**: Fixed `is_tournament_final_match()` to check `next_match_id is None` instead of counting active matches
+2. **Incorrect Bye Handling**: Fixed `advance_winner()` to only auto-complete byes in round 1, not in later rounds
+3. **Score Ordering**: Fixed score recording to preserve team order (team 0 = participant1, team 1 = participant2) instead of sorting by winner
+4. **Frontend State Refresh**: Changed polling to fetch fresh state from backend on each iteration instead of using stale references
+5. **Infinite Alert Loop**: Removed alert on tournament completion since the winner is already displayed in the header
+
+### Technical Improvements
+1. **Automatic Match Launching**: Matches now launch automatically when clicking on a bracket match (similar to story mode)
+2. **Automatic Winner Detection**: The backend automatically detects match results and records winners based on team scores
+3. **Improved Polling**: Frontend polls for match completion and updates the UI automatically

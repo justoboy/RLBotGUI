@@ -322,8 +322,37 @@ def launch_tournament_match(bot_list: list, match_settings: dict, match_id: str)
         launcher_preference_map = load_launcher_settings()
         launcher_prefs = launcher_preferences_from_map(launcher_preference_map)
         print(f"DEBUG: About to call start_match_helper")
-        start_match_helper(bot_list, match_settings, launcher_prefs)
-        print(f"DEBUG: start_match_helper returned")
+        team_scores = start_match_helper(bot_list, match_settings, launcher_prefs)
+        print(f"DEBUG: start_match_helper returned team_scores={team_scores}")
+        
+        # Automatically record the winner based on team scores
+        if team_scores:
+            # Find which team won (higher score)
+            team_scores_sorted = sorted(team_scores, key=lambda x: x['score'], reverse=True)
+            winning_team_index = team_scores_sorted[0]['team_index']
+            winning_score = team_scores_sorted[0]['score']
+            losing_score = team_scores_sorted[1]['score'] if len(team_scores_sorted) > 1 else 0
+            
+            # Create score array ordered by team_index (participant1=team0, participant2=team1)
+            score_by_team = {ts['team_index']: ts['score'] for ts in team_scores}
+            ordered_scores = [score_by_team.get(0, 0), score_by_team.get(1, 0)]
+            
+            # Find the winner's name from bot_list
+            winner_name = None
+            for bot in bot_list:
+                if bot['team'] == winning_team_index:
+                    winner_name = bot['name']
+                    break
+            
+            if winner_name:
+                print(f"DEBUG: Auto-recording winner: {winner_name} with score {winning_score}")
+                # Call tournament_record_result to advance the tournament
+                result = tournament_record_result(match_id, winner_name, json.dumps(ordered_scores))
+                print(f"DEBUG: tournament_record_result returned: {result}")
+            else:
+                print(f"DEBUG: Could not find winner for team {winning_team_index}")
+        else:
+            print(f"DEBUG: No team scores returned, match may have been interrupted")
     except Exception as e:
         print(f"Error launching tournament match: {e}")
         import traceback
@@ -389,6 +418,9 @@ def tournament_record_result(match_id: str, winner_name: str, score_json: str) -
     if winner is None:
         return json.dumps({'error': f'Winner {winner_name} not found in match'})
     
+    print(f"DEBUG: tournament_record_result({match_id}, {winner_name}, {score})")
+    print(f"DEBUG: Match {match_id} round={match.round_num}, next_match_id={match.next_match_id}")
+    
     # Record result
     match.winner = winner
     match.score = score
@@ -396,9 +428,11 @@ def tournament_record_result(match_id: str, winner_name: str, score_json: str) -
     
     # Check for tournament completion
     if is_tournament_final_match(match):
+        print(f"DEBUG: Match {match_id} is the final match, tournament complete!")
         CURRENT_TOURNAMENT.winner = winner
         CURRENT_TOURNAMENT.completed = True
     else:
+        print(f"DEBUG: Match {match_id} is not final, advancing {winner_name}")
         # Advance winner to next match
         advance_winner(match, winner)
     
@@ -409,19 +443,14 @@ def tournament_record_result(match_id: str, winner_name: str, score_json: str) -
 def is_tournament_final_match(match: Match) -> bool:
     """
     Check if this is the final match of the tournament.
+    
+    A match is the final if the winner doesn't advance to another match
+    (i.e., next_match_id is None).
     """
-    global CURRENT_TOURNAMENT
-    
-    if CURRENT_TOURNAMENT is None:
-        return False
-    
-    # For single elimination, check if this is the last match
-    remaining = [m for m in CURRENT_TOURNAMENT.matches if not m.completed]
-    
-    # Filter out matches that don't have participants yet (future rounds)
-    active_remaining = [m for m in remaining if m.participant1 is not None and m.participant2 is not None]
-    
-    return len(active_remaining) <= 1
+    # If the match has no next match, it's the final
+    is_final = match.next_match_id is None
+    print(f"DEBUG: is_tournament_final_match({match.match_id}) = {is_final} (next_match_id={match.next_match_id})")
+    return is_final
 
 
 def advance_winner(match: Match, winner: Participant) -> None:
@@ -435,7 +464,10 @@ def advance_winner(match: Match, winner: Participant) -> None:
     
     next_match_id = match.next_match_id
     if next_match_id is None:
+        print(f"DEBUG: advance_winner({match.match_id}) - no next match, winner {winner.name} is tournament champion")
         return
+    
+    print(f"DEBUG: advance_winner({match.match_id}) - advancing {winner.name} to match {next_match_id}")
     
     # Find next match
     next_match = None
@@ -452,6 +484,7 @@ def advance_winner(match: Match, winner: Participant) -> None:
                 break
     
     if next_match is None:
+        print(f"DEBUG: advance_winner({match.match_id}) - could not find next match {next_match_id}")
         return
     
     # Assign winner to next match
@@ -459,10 +492,17 @@ def advance_winner(match: Match, winner: Participant) -> None:
         next_match.participant1 = winner
     elif next_match.participant2 is None:
         next_match.participant2 = winner
+    else:
+        print(f"DEBUG: advance_winner({match.match_id}) - next match {next_match_id} already has both participants")
+        return
     
-    # If both participants are ready, check if match can auto-start (byes)
-    if next_match.participant1 is not None and next_match.participant2 is None:
-        # Only one participant - they get a bye
+    print(f"DEBUG: advance_winner({match.match_id}) - {winner.name} assigned to {next_match_id} (slot {'participant1' if next_match.participant1 == winner else 'participant2'})")
+    
+    # Only auto-complete as a bye if this is round 1 (power of 2 bracket with odd participants)
+    # In later rounds, a match with 1 participant just means waiting for the other winner
+    if next_match.round_num == 1 and next_match.participant1 is not None and next_match.participant2 is None:
+        # Only one participant in round 1 - they get a bye
+        print(f"DEBUG: advance_winner({match.match_id}) - M1 bye for {winner.name}")
         next_match.completed = True
         next_match.winner = next_match.participant1
         advance_winner(next_match, next_match.participant1)

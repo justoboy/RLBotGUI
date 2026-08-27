@@ -8,6 +8,246 @@
     color: #fff;
 }
 
+/* Import/Export Section */
+.import-export-section {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+}
+
+/* Mutator Settings Section */
+.mutator-settings-section {
+    margin: 20px 0;
+    padding: 15px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.mutator-settings-section h5 {
+    margin: 0 0 5px 0;
+    color: #00d9ff;
+    font-size: 1rem;
+}
+
+.mutator-settings-section p {
+    margin: 0 0 15px 0;
+    color: #888;
+    font-size: 0.85rem;
+}
+
+.mutator-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 15px;
+}
+
+@media (max-width: 768px) {
+    .mutator-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Bracket Section */
+.bracket-section {
+    margin-bottom: 30px;
+}
+
+.bracket-section .section-title {
+    color: #00d9ff;
+    font-size: 1.1rem;
+    margin-bottom: 15px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(0, 217, 255, 0.3);
+}
+
+.bracket-section .round-title {
+    color: #aaa;
+}
+
+/* Losers Bracket Styles */
+.bracket-match.losers-match {
+    border-color: rgba(255, 193, 7, 0.3);
+    background: rgba(255, 193, 7, 0.05);
+}
+
+.bracket-match.losers-match:hover {
+    border-color: rgba(255, 193, 7, 0.6);
+    background: rgba(255, 193, 7, 0.1);
+}
+
+/* Round Robin View */
+.round-robin-view {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    padding: 20px;
+    overflow: hidden;
+}
+
+.round-robin-header {
+    margin-bottom: 20px;
+}
+
+.round-robin-header h4 {
+    margin: 0;
+    color: #00d9ff;
+}
+
+.round-robin-matches {
+    flex: 1;
+    overflow-y: auto;
+    margin-bottom: 20px;
+    padding-right: 10px;
+}
+
+.round-robin-matches h5 {
+    margin: 0 0 15px 0;
+    color: #888;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.matches-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.round-robin-match {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+}
+
+.round-robin-match:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: #00d9ff;
+}
+
+.round-robin-match.completed {
+    opacity: 0.7;
+    border-color: #28a745;
+}
+
+.round-robin-match.active {
+    border-color: #00d9ff;
+    animation: pulse 2s infinite;
+}
+
+.round-robin-match.in-progress {
+    border-color: #ffc107;
+    background: rgba(255, 193, 7, 0.1);
+}
+
+.match-info {
+    flex: 1;
+}
+
+.match-info .match-id {
+    font-size: 0.75rem;
+    color: #666;
+    margin-right: 10px;
+}
+
+.match-info .match-pair {
+    font-size: 0.95rem;
+    color: #fff;
+}
+
+.match-result {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.match-result .match-score {
+    margin-top: 0;
+    background: rgba(40, 167, 69, 0.2);
+    color: #28a745;
+}
+
+.match-status {
+    color: #888;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+/* Standings Table */
+.round-robin-standings {
+    flex: 1;
+    overflow-y: auto;
+    padding-right: 10px;
+}
+
+.round-robin-standings h5 {
+    margin: 0 0 15px 0;
+    color: #888;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.standings-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+.standings-table thead {
+    position: sticky;
+    top: 0;
+    background: rgba(0, 217, 255, 0.1);
+}
+
+.standings-table th {
+    padding: 10px 8px;
+    text-align: center;
+    color: #00d9ff;
+    font-weight: 600;
+    border-bottom: 2px solid rgba(0, 217, 255, 0.3);
+}
+
+.standings-table th:first-child {
+    text-align: left;
+}
+
+.standings-table td {
+    padding: 10px 8px;
+    text-align: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.standings-table td:first-child {
+    text-align: left;
+}
+
+.standings-table .participant-name {
+    color: #fff;
+    font-weight: 500;
+}
+
+.standings-table .points {
+    color: #ffd700;
+    font-weight: bold;
+    font-size: 1rem;
+}
+
+.standings-table tbody tr:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
 /* Landing Page */
 .tournament-landing {
     display: flex;
@@ -448,14 +688,8 @@
 /* Bot Pool Wrapper */
 .bot-pool-wrapper {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 10px;
-}
-
-@media (max-width: 1200px) {
-    .bot-pool-wrapper {
-        grid-template-columns: repeat(4, 1fr);
-    }
 }
 
 @media (max-width: 992px) {

@@ -1,7 +1,48 @@
 import BotCard from './bot-card-vue.js'
 import BotPool from './bot-pool-vue.js'
+import MutatorField from './mutator-field-vue.js'
 
 const HUMAN = {'name': 'Human', 'type': 'human', 'image': 'imgs/human.png'};
+
+// Default mutator settings
+const DEFAULT_MUTATORS = {
+    match_length: '5 Minutes',
+    max_score: '5 Goals',
+    overtime: 'Unlimited',
+    series_length: 'Unlimited',
+    game_speed: 'Default',
+    ball_max_speed: 'Default',
+    ball_type: 'Default',
+    ball_weight: 'Default',
+    ball_size: 'Default',
+    ball_bounciness: 'Default',
+    boost_amount: 'Default',
+    rumble: 'None',
+    boost_strength: '1x',
+    gravity: 'Default',
+    demolish: 'Default',
+    respawn_time: '3 Seconds'
+};
+
+// Valid values sourced from rlbot.parsing.match_settings_config_parser
+const MUTATOR_OPTIONS = {
+    match_length: ['5 Minutes', '10 Minutes', '20 Minutes', 'Unlimited'],
+    max_score: ['Unlimited', '1 Goal', '3 Goals', '5 Goals'],
+    overtime: ['Unlimited', '+5 Max, First Score', '+5 Max, Random Team'],
+    series_length: ['Unlimited', '3 Games', '5 Games', '7 Games'],
+    game_speed: ['Default', 'Slo-Mo', 'Time Warp'],
+    ball_max_speed: ['Default', 'Slow', 'Fast', 'Super Fast'],
+    ball_type: ['Default', 'Cube', 'Puck', 'Basketball'],
+    ball_weight: ['Default', 'Light', 'Heavy', 'Super Light'],
+    ball_size: ['Default', 'Small', 'Large', 'Gigantic'],
+    ball_bounciness: ['Default', 'Low', 'High', 'Super High'],
+    boost_amount: ['Default', 'Unlimited', 'Recharge (Slow)', 'Recharge (Fast)', 'No Boost'],
+    rumble: ['None', 'Default', 'Slow', 'Civilized', 'Destruction Derby', 'Spring Loaded', 'Spikes Only', 'Spike Rush'],
+    boost_strength: ['1x', '1.5x', '2x', '10x'],
+    gravity: ['Default', 'Low', 'High', 'Super High'],
+    demolish: ['Default', 'Disabled', 'Friendly Fire', 'On Contact', 'On Contact (FF)'],
+    respawn_time: ['3 Seconds', '2 Seconds', '1 Second', 'Disable Goal Reset']
+};
 
 export default {
     name: 'tournament',
@@ -57,6 +98,19 @@ export default {
                         <b-icon icon="plus-circle"></b-icon> Create New Tournament
                     </b-button>
                 </div>
+                
+                <!-- Import/Export Section -->
+                <div class="import-export-section mt-3">
+                    <b-button @click="triggerImportFilePicker" variant="secondary" size="sm" class="mr-2">
+                        <b-icon icon="upload"></b-icon> Import Tournament
+                    </b-button>
+                    <b-button @click="exportTournament" variant="secondary" size="sm" v-if="tournamentState">
+                        <b-icon icon="download"></b-icon> Export Tournament
+                    </b-button>
+                </div>
+
+                <!-- Hidden file input for importing tournament JSON files -->
+                <input type="file" ref="importFileInput" accept=".json,application/json" style="display:none" @change="handleImportFileSelected">
             </div>
         </div>
 
@@ -83,6 +137,9 @@ export default {
                         <b-icon :icon="isSaving ? 'check-circle-fill' : 'save'"></b-icon>
                         {{ isSaving ? 'Saved!' : 'Save' }}
                     </b-button>
+                    <b-button @click="exportTournament" variant="secondary" v-if="!matchInProgress">
+                        <b-icon icon="download"></b-icon> Export
+                    </b-button>
                     <b-button @click="showMatchCompleteModal" variant="success" v-if="matchInProgress">
                         <b-icon icon="check-circle"></b-icon> Match Complete
                     </b-button>
@@ -91,46 +148,153 @@ export default {
 
             <!-- Tournament Content -->
             <div class="tournament-content noscroll-flex">
-                <!-- Bracket View -->
-                <div class="bracket-view noscroll-flex">
+                <!-- Bracket View for Single/Double Elimination -->
+                <div class="bracket-view noscroll-flex" v-if="tournamentState.format !== 'round_robin'">
                     <div class="bracket-header">
-                        <h4>Bracket</h4>
+                        <h4>{{ formatLabel }} Bracket</h4>
                         <b-button @click="randomizeSeeding" variant="outline-primary" size="sm" v-if="!tournamentState.completed">
                             <b-icon icon="shuffle"></b-icon> Randomize Seeding
                         </b-button>
                     </div>
                     
                     <div class="bracket-tree noscroll-flex">
-                        <!-- Group matches by round -->
-                        <div v-for="(roundMatches, roundIndex) in matchesByRound" :key="roundIndex" class="bracket-round">
-                            <h5 class="round-title">{{ getRoundName(roundMatches[0]?.round_num, roundMatches) }}</h5>
-                            <div class="bracket-round-matches">
-                                <div v-for="match in roundMatches" :key="match.match_id" 
-                                     class="bracket-match" 
-                                     :class="{ 'completed': match.completed, 'active': isMatchActive(match), 'in-progress': isMatchInProgress(match) }"
-                                     @click="onMatchClick(match)">
-                                    <div class="match-header">
-                                        <span class="match-id">{{ match.match_id }}</span>
-                                        <span v-if="match.completed" class="match-result">
-                                            <b-icon icon="check-circle-fill" variant="success"></b-icon>
-                                        </span>
-                                        <span v-else-if="isMatchInProgress(match)" class="match-in-progress">
-                                            <b-icon icon="hourglass-split" variant="info"></b-icon> In Progress
-                                        </span>
-                                    </div>
-                                    <div class="match-players">
-                                        <span v-if="match.participant1">{{ match.participant1.name }}</span>
-                                        <span v-else class="placeholder">Waiting...</span>
-                                        <span class="match-vs-inline">vs</span>
-                                        <span v-if="match.participant2">{{ match.participant2.name }}</span>
-                                        <span v-else class="placeholder">Waiting...</span>
-                                    </div>
-                                    <div v-if="match.score" class="match-score">
-                                        {{ match.score[0] }} - {{ match.score[1] }}
+                        <!-- Winners Bracket -->
+                        <div class="bracket-section">
+                            <h5 class="section-title">Winners Bracket</h5>
+                            <div v-for="(roundMatches, roundIndex) in matchesByRound" :key="roundIndex" class="bracket-round">
+                                <h6 class="round-title">{{ getRoundName(roundMatches[0]?.round_num, roundMatches) }}</h6>
+                                <div class="bracket-round-matches">
+                                    <div v-for="match in roundMatches" :key="match.match_id" 
+                                         class="bracket-match" 
+                                         :class="{ 'completed': match.completed, 'active': isMatchActive(match), 'in-progress': isMatchInProgress(match) }"
+                                         @click="onMatchClick(match)">
+                                        <div class="match-header">
+                                            <span class="match-id">{{ match.match_id }}</span>
+                                            <span v-if="match.completed" class="match-result">
+                                                <b-icon icon="check-circle-fill" variant="success"></b-icon>
+                                            </span>
+                                            <span v-else-if="isMatchInProgress(match)" class="match-in-progress">
+                                                <b-icon icon="hourglass-split" variant="info"></b-icon> In Progress
+                                            </span>
+                                        </div>
+                                        <div class="match-players">
+                                            <span v-if="match.participant1">{{ match.participant1.name }}</span>
+                                            <span v-else class="placeholder">Waiting...</span>
+                                            <span class="match-vs-inline">vs</span>
+                                            <span v-if="match.participant2">{{ match.participant2.name }}</span>
+                                            <span v-else class="placeholder">Waiting...</span>
+                                        </div>
+                                        <div v-if="match.score" class="match-score">
+                                            {{ match.score[0] }} - {{ match.score[1] }}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
+                        
+                        <!-- Losers Bracket for Double Elimination -->
+                        <div class="bracket-section" v-if="tournamentState.format === 'double_elimination' && losersBracketMatches.length > 0">
+                            <h5 class="section-title">Losers Bracket</h5>
+                            <div v-for="(roundMatches, roundIndex) in losersBracketMatchesByRound" :key="'lb-' + roundIndex" class="bracket-round">
+                                <h6 class="round-title">Losers Round {{ roundIndex + 1 }}</h6>
+                                <div class="bracket-round-matches">
+                                    <div v-for="match in roundMatches" :key="match.match_id" 
+                                         class="bracket-match losers-match"
+                                         :class="{ 'completed': match.completed, 'active': isMatchActive(match), 'in-progress': isMatchInProgress(match) }"
+                                         @click="onMatchClick(match)">
+                                        <div class="match-header">
+                                            <span class="match-id">{{ match.match_id }}</span>
+                                            <span v-if="match.completed" class="match-result">
+                                                <b-icon icon="check-circle-fill" variant="success"></b-icon>
+                                            </span>
+                                            <span v-else-if="isMatchInProgress(match)" class="match-in-progress">
+                                                <b-icon icon="hourglass-split" variant="info"></b-icon> In Progress
+                                            </span>
+                                        </div>
+                                        <div class="match-players">
+                                            <span v-if="match.participant1">{{ match.participant1.name }}</span>
+                                            <span v-else class="placeholder">Waiting...</span>
+                                            <span class="match-vs-inline">vs</span>
+                                            <span v-if="match.participant2">{{ match.participant2.name }}</span>
+                                            <span v-else class="placeholder">Waiting...</span>
+                                        </div>
+                                        <div v-if="match.score" class="match-score">
+                                            {{ match.score[0] }} - {{ match.score[1] }}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Round Robin View -->
+                <div class="round-robin-view noscroll-flex" v-else>
+                    <div class="round-robin-header">
+                        <h4>Round Robin Standings</h4>
+                    </div>
+                    
+                    <!-- Matches List -->
+                    <div class="round-robin-matches">
+                        <h5>Matches</h5>
+                        <div class="matches-list">
+                            <div v-for="match in tournamentState.matches" :key="match.match_id" 
+                                 class="round-robin-match"
+                                 :class="{ 'completed': match.completed, 'active': isMatchActive(match), 'in-progress': isMatchInProgress(match) }"
+                                 @click="onMatchClick(match)">
+                                <div class="match-info">
+                                    <span class="match-id">{{ match.match_id }}</span>
+                                    <span class="match-pair">
+                                        {{ match.participant1?.name || 'Waiting' }} vs {{ match.participant2?.name || 'Waiting' }}
+                                    </span>
+                                </div>
+                                <div class="match-result" v-if="match.completed">
+                                    <span class="match-score">{{ match.score?.[0] }} - {{ match.score?.[1] }}</span>
+                                    <b-icon icon="check-circle-fill" variant="success"></b-icon>
+                                </div>
+                                <div class="match-status" v-else-if="isMatchInProgress(match)">
+                                    <b-icon icon="hourglass-split" variant="info"></b-icon> In Progress
+                                </div>
+                                <div class="match-status" v-else>
+                                    <span>Pending</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Standings Table -->
+                    <div class="round-robin-standings">
+                        <h5>Standings</h5>
+                        <table class="standings-table">
+                            <thead>
+                                <tr>
+                                    <th>Rank</th>
+                                    <th>Participant</th>
+                                    <th>Played</th>
+                                    <th>Wins</th>
+                                    <th>Draws</th>
+                                    <th>Losses</th>
+                                    <th>Goals For</th>
+                                    <th>Goals Against</th>
+                                    <th>Goal Difference</th>
+                                    <th>Points</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="(standing, index) in standings" :key="standing.participant.participant_id">
+                                    <td>{{ index + 1 }}</td>
+                                    <td class="participant-name">{{ standing.participant.name }}</td>
+                                    <td>{{ standing.played }}</td>
+                                    <td>{{ standing.wins }}</td>
+                                    <td>{{ standing.draws }}</td>
+                                    <td>{{ standing.losses }}</td>
+                                    <td>{{ standing.goals_for }}</td>
+                                    <td>{{ standing.goals_against }}</td>
+                                    <td>{{ standing.goal_difference }}</td>
+                                    <td class="points">{{ standing.points }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -154,10 +318,63 @@ export default {
                         v-model="newTournament.format"
                     >
                         <b-form-select-option value="single_elimination">Single Elimination</b-form-select-option>
-                        <b-form-select-option value="double_elimination">Double Elimination (Coming Soon)</b-form-select-option>
-                        <b-form-select-option value="round_robin">Round Robin (Coming Soon)</b-form-select-option>
+                        <b-form-select-option value="double_elimination">Double Elimination</b-form-select-option>
+                        <b-form-select-option value="round_robin">Round Robin</b-form-select-option>
                     </b-form-select>
                 </b-form-group>
+
+                <!-- Mutator Settings -->
+                <div class="mutator-settings-section">
+                    <h5>Match Settings (Optional)</h5>
+                    <p class="text-muted small">Customize match settings. Leave as default for standard matches.</p>
+                    
+                    <div class="mutator-grid">
+                        <mutator-field
+                            label="Match Length"
+                            :options="MUTATOR_OPTIONS.match_length"
+                            v-model="newTournament.mutators.match_length"
+                        />
+                        <mutator-field
+                            label="Max Score"
+                            :options="MUTATOR_OPTIONS.max_score"
+                            v-model="newTournament.mutators.max_score"
+                        />
+                        <mutator-field
+                            label="Overtime"
+                            :options="MUTATOR_OPTIONS.overtime"
+                            v-model="newTournament.mutators.overtime"
+                        />
+                        <mutator-field
+                            label="Series Length"
+                            :options="MUTATOR_OPTIONS.series_length"
+                            v-model="newTournament.mutators.series_length"
+                        />
+                        <mutator-field
+                            label="Game Speed"
+                            :options="MUTATOR_OPTIONS.game_speed"
+                            v-model="newTournament.mutators.game_speed"
+                        />
+                        <mutator-field
+                            label="Boost Amount"
+                            :options="MUTATOR_OPTIONS.boost_amount"
+                            v-model="newTournament.mutators.boost_amount"
+                        />
+                        <mutator-field
+                            label="Rumble"
+                            :options="MUTATOR_OPTIONS.rumble"
+                            v-model="newTournament.mutators.rumble"
+                        />
+                        <mutator-field
+                            label="Demolish"
+                            :options="MUTATOR_OPTIONS.demolish"
+                            v-model="newTournament.mutators.demolish"
+                        />
+                    </div>
+                    
+                    <b-button @click="resetMutatorsToDefault" variant="outline-secondary" size="sm" class="mt-2">
+                        <b-icon icon="arrow-counterclockwise"></b-icon> Reset to Defaults
+                    </b-button>
+                </div>
 
                 <b-form-group label="Select Participants from Pool" label-for="participant-pool">
                     <div class="participant-pool-selection">
@@ -240,6 +457,7 @@ export default {
     components: {
         'bot-card': BotCard,
         'bot-pool': BotPool,
+        'mutator-field': MutatorField,
     },
     data() {
         return {
@@ -248,12 +466,14 @@ export default {
             selectedParticipants: [],
             newTournament: {
                 name: '',
-                format: 'single_elimination'
+                format: 'single_elimination',
+                mutators: { ...DEFAULT_MUTATORS }
             },
             currentMatch: null,
             matchInProgress: null,
             savedTournaments: [],
             isSaving: false,
+            MUTATOR_OPTIONS: MUTATOR_OPTIONS,
         };
     },
     computed: {
@@ -306,6 +526,95 @@ export default {
             
             // All rounds complete - return the last round
             return roundNumbers.length > 0 ? roundNumbers[roundNumbers.length - 1] : 1;
+        },
+        losersBracketMatches() {
+            if (!this.tournamentState) return [];
+            return this.tournamentState.losers_bracket_matches || [];
+        },
+        losersBracketMatchesByRound() {
+            if (!this.losersBracketMatches || this.losersBracketMatches.length === 0) return [];
+            
+            const rounds = {};
+            for (const match of this.losersBracketMatches) {
+                if (!rounds[match.round_num]) {
+                    rounds[match.round_num] = [];
+                }
+                rounds[match.round_num].push(match);
+            }
+            
+            return Object.values(rounds);
+        },
+        standings() {
+            if (!this.tournamentState || this.tournamentState.format !== 'round_robin') return [];
+            
+            // Calculate standings from matches
+            const standings = {};
+            
+            // Initialize standings for all participants
+            for (const p of this.tournamentState.participants) {
+                standings[p.participant_id] = {
+                    participant: p,
+                    played: 0,
+                    wins: 0,
+                    draws: 0,
+                    losses: 0,
+                    goals_for: 0,
+                    goals_against: 0,
+                    goal_difference: 0,
+                    points: 0
+                };
+            }
+            
+            // Process completed matches
+            for (const match of this.tournamentState.matches) {
+                if (!match.completed || !match.score) continue;
+                if (!match.participant1 || !match.participant2) continue;
+                
+                const p1Id = match.participant1.participant_id;
+                const p2Id = match.participant2.participant_id;
+                const [score1, score2] = match.score;
+                
+                // Update games played
+                standings[p1Id].played++;
+                standings[p2Id].played++;
+                
+                // Update goals
+                standings[p1Id].goals_for += score1;
+                standings[p1Id].goals_against += score2;
+                standings[p2Id].goals_for += score2;
+                standings[p2Id].goals_against += score1;
+                
+                // Determine winner/draw
+                if (score1 > score2) {
+                    standings[p1Id].wins++;
+                    standings[p1Id].points += 3;
+                    standings[p2Id].losses++;
+                } else if (score2 > score1) {
+                    standings[p2Id].wins++;
+                    standings[p2Id].points += 3;
+                    standings[p1Id].losses++;
+                } else {
+                    standings[p1Id].draws++;
+                    standings[p1Id].points += 1;
+                    standings[p2Id].draws++;
+                    standings[p2Id].points += 1;
+                }
+            }
+            
+            // Calculate goal difference
+            for (const pId of Object.keys(standings)) {
+                standings[pId].goal_difference = standings[pId].goals_for - standings[pId].goals_against;
+            }
+            
+            // Convert to array and sort
+            const result = Object.values(standings);
+            result.sort((a, b) => {
+                if (b.points !== a.points) return b.points - a.points;
+                if (b.goal_difference !== a.goal_difference) return b.goal_difference - a.goal_difference;
+                return b.goals_for - a.goals_for;
+            });
+            
+            return result;
         }
     },
     methods: {
@@ -406,12 +715,13 @@ export default {
                 const result = await eel.tournament_new(
                     this.newTournament.name,
                     this.newTournament.format,
-                    JSON.stringify(this.selectedParticipants)
+                    JSON.stringify(this.selectedParticipants),
+                    JSON.stringify(this.newTournament.mutators)
                 )();
-                
+            
                 this.tournamentState = JSON.parse(result);
                 this.selectedParticipants = [];
-                this.newTournament = { name: '', format: 'single_elimination' };
+                this.newTournament = { name: '', format: 'single_elimination', mutators: { ...DEFAULT_MUTATORS } };
                 this.$bvModal.hide('create-tournament-modal');
             } catch (error) {
                 console.error('Error creating tournament:', error);
@@ -667,6 +977,86 @@ export default {
                 'round_robin': 'Round Robin'
             };
             return labels[format] || format;
+        },
+        
+        resetMutatorsToDefault() {
+            this.newTournament.mutators = { ...DEFAULT_MUTATORS };
+        },
+        
+        async exportTournament() {
+            if (!this.tournamentState) return;
+            
+            try {
+                const jsonStr = await eel.tournament_export_to_json()();
+                const data = JSON.parse(jsonStr);
+                
+                if (data.error) {
+                    alert('Error exporting tournament: ' + data.error);
+                    return;
+                }
+                
+                // Ask the user where to save the file via a native save dialog
+                // (delegated to PyQt5 on the backend, see tournament_save_file_dialog)
+                const defaultName = `${this.tournamentState.name.replace(/[^a-z0-9]/gi, '_')}_tournament.json`;
+                const result = await eel.tournament_save_file_dialog(jsonStr, defaultName)();
+                const resultData = JSON.parse(result);
+                
+                if (resultData.cancelled) {
+                    // User cancelled the save dialog
+                    return;
+                }
+                
+                if (resultData.error) {
+                    alert('Error saving tournament file: ' + resultData.error);
+                    return;
+                }
+                
+                alert('Tournament exported to: ' + resultData.path);
+            } catch (error) {
+                console.error('Error exporting tournament:', error);
+                alert('Error exporting tournament: ' + error);
+            }
+        },
+        
+        triggerImportFilePicker() {
+            // Reset the input so the same file can be selected again
+            this.$refs.importFileInput.value = '';
+            this.$refs.importFileInput.click();
+        },
+        
+        handleImportFileSelected(event) {
+            const file = event.target.files && event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                this.importTournament(e.target.result);
+            };
+            reader.onerror = () => {
+                alert('Error reading file: ' + file.name);
+            };
+            reader.readAsText(file);
+        },
+        
+        async importTournament(jsonStr) {
+            try {
+                // Validate JSON
+                JSON.parse(jsonStr);
+                
+                const result = await eel.tournament_import_from_json(jsonStr)();
+                const data = JSON.parse(result);
+                
+                if (data.error) {
+                    alert('Error importing tournament: ' + data.error);
+                    return;
+                }
+                
+                this.tournamentState = data;
+                alert('Tournament imported successfully!');
+            } catch (error) {
+                console.error('Error importing tournament:', error);
+                alert('Invalid JSON format: ' + error);
+            }
         }
     },
     created() {

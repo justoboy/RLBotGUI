@@ -71,7 +71,7 @@ def generate_match_config_from_match(match: Match, tournament_format: str) -> Di
 
 
 @eel.expose
-def tournament_new(name: str, tournament_format: str, participants_json: str) -> str:
+def tournament_new(name: str, tournament_format: str, participants_json: str, match_settings_json: str = '{}') -> str:
     """
     Create a new tournament.
     
@@ -79,6 +79,7 @@ def tournament_new(name: str, tournament_format: str, participants_json: str) ->
         name: Tournament name
         tournament_format: 'single_elimination', 'double_elimination', or 'round_robin'
         participants_json: JSON string of participant list
+        match_settings_json: JSON string of match settings (optional)
     
     Returns:
         JSON string of tournament state
@@ -88,13 +89,17 @@ def tournament_new(name: str, tournament_format: str, participants_json: str) ->
     participants_data = json.loads(participants_json)
     participants = [Participant.from_dict(p) for p in participants_data]
     
+    # Parse match settings
+    match_settings = json.loads(match_settings_json) if match_settings_json else {}
+    
     tournament_id = str(uuid.uuid4())[:8]
     
     CURRENT_TOURNAMENT = TournamentState(
         name=name,
         tournament_id=tournament_id,
         format=tournament_format,
-        participants=participants
+        participants=participants,
+        match_settings=match_settings
     )
     
     # Generate bracket based on format
@@ -265,7 +270,39 @@ def tournament_start_match(match_id: str) -> str:
             'skill': 10
         })
     
-    # Build match settings
+    # Build match settings, applying the tournament's custom mutators
+    # (stored in CURRENT_TOURNAMENT.match_settings) with sensible defaults
+    # for any mutator the user did not explicitly set.
+    default_mutators = {
+        'match_length': '5 Minutes',
+        'max_score': '5 Goals',
+        'overtime': 'Unlimited',
+        'series_length': 'Unlimited',
+        'game_speed': 'Default',
+        'ball_max_speed': 'Default',
+        'ball_type': 'Default',
+        'ball_weight': 'Default',
+        'ball_size': 'Default',
+        'ball_bounciness': 'Default',
+        'boost_amount': 'Default',
+        'rumble': 'None',
+        'boost_strength': '1x',
+        'gravity': 'Default',
+        'demolish': 'Default',
+        'respawn_time': '3 Seconds'
+    }
+
+    # CURRENT_TOURNAMENT.match_settings is a flat {mutator_key: value} map
+    # (the frontend sends JSON.stringify(newTournament.mutators)).
+    custom_mutators = CURRENT_TOURNAMENT.match_settings or {}
+    if not isinstance(custom_mutators, dict):
+        custom_mutators = {}
+
+    mutators = dict(default_mutators)
+    for key, value in custom_mutators.items():
+        if key in default_mutators and value:
+            mutators[key] = value
+
     match_settings = {
         'game_mode': 'Soccer',
         'map': 'DFHStadium',
@@ -276,24 +313,7 @@ def tournament_start_match(match_id: str) -> str:
         'enable_state_setting': False,
         'auto_save_replay': False,
         'match_behavior': 'Restart',
-        'mutators': {
-            'match_length': '5 Minutes',
-            'max_score': '5 Goals',
-            'overtime': 'Unlimited',
-            'series_length': 'Unlimited',
-            'game_speed': 'Default',
-            'ball_max_speed': 'Default',
-            'ball_type': 'Default',
-            'ball_weight': 'Default',
-            'ball_size': 'Default',
-            'ball_bounciness': 'Default',
-            'boost_amount': 'Default',
-            'rumble': 'None',
-            'boost_strength': '1x',
-            'gravity': 'Default',
-            'demolish': 'Default',
-            'respawn_time': '3 Seconds'
-        },
+        'mutators': mutators,
         'scripts': []
     }
     
@@ -711,3 +731,87 @@ def tournament_load_from_id(tournament_id: str) -> str:
             return json.dumps(CURRENT_TOURNAMENT.to_dict())
     
     return json.dumps({'error': f'Tournament {tournament_id} not found'})
+
+
+@eel.expose
+def tournament_export_to_json() -> str:
+    """
+    Export the current tournament to a JSON string for file export.
+    
+    Returns:
+        JSON string of complete tournament state (suitable for saving to file)
+    """
+    global CURRENT_TOURNAMENT
+    
+    if CURRENT_TOURNAMENT is None:
+        return json.dumps({'error': 'No tournament loaded'})
+    
+    # Return the full serialized state
+    return json.dumps(CURRENT_TOURNAMENT.to_dict(), indent=2)
+
+
+@eel.expose
+def tournament_import_from_json(tournament_json: str) -> str:
+    """
+    Import a tournament from a JSON string.
+    
+    Args:
+        tournament_json: JSON string of tournament state
+    
+    Returns:
+        JSON string of loaded tournament state
+    """
+    global CURRENT_TOURNAMENT
+    
+    try:
+        data = json.loads(tournament_json)
+        CURRENT_TOURNAMENT = TournamentState.from_dict(data)
+        return tournament_save_state()
+    except Exception as e:
+        return json.dumps({'error': f'Failed to import tournament: {str(e)}'})
+
+
+@eel.expose
+def tournament_save_file_dialog(file_content: str, default_filename: str = 'tournament.json') -> str:
+    """
+    Open a native "Save As" file dialog and write the given content to the
+    chosen location.
+
+    Eel 0.18.2 does not ship eel.savefile(), so we delegate the file dialog
+    to PyQt5 (already a project dependency). This mirrors the existing
+    pick_location() pattern in gui.py.
+
+    Args:
+        file_content: String content to write (the tournament JSON)
+        default_filename: Suggested filename shown in the dialog
+
+    Returns:
+        JSON string:
+            {'success': True,  'path': ...}  on success
+            {'cancelled': True}              if the user closed the dialog
+            {'error': ...}                   on failure
+    """
+    from PyQt5.QtWidgets import QApplication, QFileDialog
+    import sys
+
+    # QApplication must exist before any Q* widget/dialog is used.
+    # Reuse the existing instance if one is already running.
+    app = QApplication.instance() or QApplication(sys.argv)
+
+    file_path, _ = QFileDialog.getSaveFileName(
+        None,
+        "Save Tournament",
+        default_filename,
+        "JSON Files (*.json);;All Files (*)"
+    )
+
+    if not file_path:
+        # User cancelled the dialog
+        return json.dumps({'cancelled': True})
+
+    try:
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(file_content)
+        return json.dumps({'success': True, 'path': file_path})
+    except Exception as e:
+        return json.dumps({'error': f'Failed to write file: {str(e)}'})

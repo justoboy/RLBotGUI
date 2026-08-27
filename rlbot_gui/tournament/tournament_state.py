@@ -94,6 +94,7 @@ class TournamentState:
     winner: Optional[Participant] = None
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     losers_bracket_matches: List[Match] = field(default_factory=list)  # For double elimination
+    match_settings: Dict[str, Any] = field(default_factory=dict)  # Custom match settings/mutators
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -106,7 +107,8 @@ class TournamentState:
             'completed': self.completed,
             'winner': self.winner.to_dict() if self.winner else None,
             'created_at': self.created_at,
-            'losers_bracket_matches': [m.to_dict() for m in self.losers_bracket_matches]
+            'losers_bracket_matches': [m.to_dict() for m in self.losers_bracket_matches],
+            'match_settings': self.match_settings
         }
     
     @staticmethod
@@ -117,7 +119,8 @@ class TournamentState:
             format=data['format'],
             current_round=data.get('current_round', 1),
             completed=data.get('completed', False),
-            created_at=data.get('created_at', datetime.now().isoformat())
+            created_at=data.get('created_at', datetime.now().isoformat()),
+            match_settings=data.get('match_settings', {})
         )
         for p_data in data.get('participants', []):
             state.participants.append(Participant.from_dict(p_data))

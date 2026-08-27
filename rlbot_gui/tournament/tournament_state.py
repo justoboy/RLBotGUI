@@ -36,6 +36,40 @@ class Participant:
 
 
 @dataclass
+class Team:
+    """Represents a team in the tournament (1v1, 2v2, 3v3, or 4v4)"""
+    team_id: str
+    name: str  # Optional custom name (e.g., 'Team A')
+    participants: List[Participant] = field(default_factory=list)
+    wins: int = 0
+    losses: int = 0
+    points: int = 0  # For round robin
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'team_id': self.team_id,
+            'name': self.name,
+            'participants': [p.to_dict() for p in self.participants],
+            'wins': self.wins,
+            'losses': self.losses,
+            'points': self.points
+        }
+    
+    @staticmethod
+    def from_dict(data: Dict[str, Any]) -> 'Team':
+        team = Team(
+            team_id=data['team_id'],
+            name=data.get('name', ''),
+            wins=data.get('wins', 0),
+            losses=data.get('losses', 0),
+            points=data.get('points', 0)
+        )
+        for p_data in data.get('participants', []):
+            team.participants.append(Participant.from_dict(p_data))
+        return team
+
+
+@dataclass
 class Match:
     """Represents a single match in the tournament"""
     match_id: str
@@ -47,6 +81,10 @@ class Match:
     completed: bool = False
     next_match_id: Optional[str] = None  # Match this winner advances to
     loser_next_match_id: Optional[str] = None  # For double elimination: match loser advances to
+    # Team-based fields (Phase 2): when team_size > 1, matches are between teams
+    team1: Optional[Team] = None
+    team2: Optional[Team] = None
+    winner_team: Optional[Team] = None
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -58,7 +96,10 @@ class Match:
             'score': self.score,
             'completed': self.completed,
             'next_match_id': self.next_match_id,
-            'loser_next_match_id': self.loser_next_match_id
+            'loser_next_match_id': self.loser_next_match_id,
+            'team1': self.team1.to_dict() if self.team1 else None,
+            'team2': self.team2.to_dict() if self.team2 else None,
+            'winner_team': self.winner_team.to_dict() if self.winner_team else None
         }
     
     @staticmethod
@@ -78,6 +119,12 @@ class Match:
             match.winner = Participant.from_dict(data['winner'])
         if data.get('score'):
             match.score = tuple(data['score'])
+        if data.get('team1'):
+            match.team1 = Team.from_dict(data['team1'])
+        if data.get('team2'):
+            match.team2 = Team.from_dict(data['team2'])
+        if data.get('winner_team'):
+            match.winner_team = Team.from_dict(data['winner_team'])
         return match
 
 
@@ -95,6 +142,10 @@ class TournamentState:
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     losers_bracket_matches: List[Match] = field(default_factory=list)  # For double elimination
     match_settings: Dict[str, Any] = field(default_factory=dict)  # Custom match settings/mutators
+    # Phase 2: team size support (1v1, 2v2, 3v3, 4v4)
+    team_size: int = 1  # 1, 2, 3, or 4 participants per team
+    teams: List[Team] = field(default_factory=list)  # Formed teams
+    winner_team: Optional[Team] = None  # Winning team (when team_size > 1)
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -108,7 +159,10 @@ class TournamentState:
             'winner': self.winner.to_dict() if self.winner else None,
             'created_at': self.created_at,
             'losers_bracket_matches': [m.to_dict() for m in self.losers_bracket_matches],
-            'match_settings': self.match_settings
+            'match_settings': self.match_settings,
+            'team_size': self.team_size,
+            'teams': [t.to_dict() for t in self.teams],
+            'winner_team': self.winner_team.to_dict() if self.winner_team else None
         }
     
     @staticmethod
@@ -120,7 +174,8 @@ class TournamentState:
             current_round=data.get('current_round', 1),
             completed=data.get('completed', False),
             created_at=data.get('created_at', datetime.now().isoformat()),
-            match_settings=data.get('match_settings', {})
+            match_settings=data.get('match_settings', {}),
+            team_size=data.get('team_size', 1)
         )
         for p_data in data.get('participants', []):
             state.participants.append(Participant.from_dict(p_data))
@@ -128,6 +183,10 @@ class TournamentState:
             state.matches.append(Match.from_dict(m_data))
         for m_data in data.get('losers_bracket_matches', []):
             state.losers_bracket_matches.append(Match.from_dict(m_data))
+        for t_data in data.get('teams', []):
+            state.teams.append(Team.from_dict(t_data))
         if data.get('winner'):
             state.winner = Participant.from_dict(data['winner'])
+        if data.get('winner_team'):
+            state.winner_team = Team.from_dict(data['winner_team'])
         return state

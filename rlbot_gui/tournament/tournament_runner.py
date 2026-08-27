@@ -8,11 +8,20 @@ from typing import List, Dict, Any, Optional
 import eel
 from PyQt5.QtCore import QSettings
 
-from rlbot_gui.tournament.tournament_state import TournamentState, Participant, Match
+from rlbot_gui.tournament.tournament_state import TournamentState, Participant, Match, Team
 from rlbot_gui.tournament.bracket_generator import (
     generate_single_elimination_bracket,
     generate_double_elimination_bracket,
     generate_round_robin_bracket
+)
+from rlbot_gui.tournament.team_manager import (
+    validate_team_formation,
+    form_teams_random,
+    form_teams_seeded,
+    form_teams_manual,
+    generate_team_bracket,
+    build_match_bot_list,
+    team_balance_report
 )
 
 # Global state for current tournament
@@ -71,7 +80,7 @@ def generate_match_config_from_match(match: Match, tournament_format: str) -> Di
 
 
 @eel.expose
-def tournament_new(name: str, tournament_format: str, participants_json: str, match_settings_json: str = '{}') -> str:
+def tournament_new(name: str, tournament_format: str, participants_json: str, match_settings_json: str = '{}', team_size: int = 1) -> str:
     """
     Create a new tournament.
     
@@ -80,6 +89,7 @@ def tournament_new(name: str, tournament_format: str, participants_json: str, ma
         tournament_format: 'single_elimination', 'double_elimination', or 'round_robin'
         participants_json: JSON string of participant list
         match_settings_json: JSON string of match settings (optional)
+        team_size: Participants per team (1, 2, 3, or 4). Default 1 (1v1).
     
     Returns:
         JSON string of tournament state
@@ -92,6 +102,16 @@ def tournament_new(name: str, tournament_format: str, participants_json: str, ma
     # Parse match settings
     match_settings = json.loads(match_settings_json) if match_settings_json else {}
     
+    # Validate team size
+    if team_size not in (1, 2, 3, 4):
+        return json.dumps({'error': f'Team size must be 1, 2, 3, or 4 (got {team_size})'})
+    
+    # Validate participant count for team formation
+    if team_size > 1:
+        valid, error_msg = validate_team_formation(len(participants), team_size)
+        if not valid:
+            return json.dumps({'error': error_msg})
+    
     tournament_id = str(uuid.uuid4())[:8]
     
     CURRENT_TOURNAMENT = TournamentState(
@@ -99,25 +119,163 @@ def tournament_new(name: str, tournament_format: str, participants_json: str, ma
         tournament_id=tournament_id,
         format=tournament_format,
         participants=participants,
-        match_settings=match_settings
+        match_settings=match_settings,
+        team_size=team_size
     )
     
-    # Generate bracket based on format
-    if tournament_format == 'single_elimination':
-        matches, num_rounds = generate_single_elimination_bracket(participants)
+    if team_size > 1:
+        # Form teams (random assignment by default) and generate team bracket
+        teams = form_teams_random(participants, team_size)
+        CURRENT_TOURNAMENT.teams = teams
+        matches, losers_matches = generate_team_bracket(teams, tournament_format)
         CURRENT_TOURNAMENT.matches = matches
-        CURRENT_TOURNAMENT.current_round = 1
-    elif tournament_format == 'double_elimination':
-        winners_matches, losers_matches, num_rounds = generate_double_elimination_bracket(participants)
-        CURRENT_TOURNAMENT.matches = winners_matches
         CURRENT_TOURNAMENT.losers_bracket_matches = losers_matches
-        CURRENT_TOURNAMENT.current_round = 1
-    elif tournament_format == 'round_robin':
-        matches = generate_round_robin_bracket(participants)
-        CURRENT_TOURNAMENT.matches = matches
-        CURRENT_TOURNAMENT.current_round = 1
+    else:
+        # 1v1: existing participant-based bracket
+        if tournament_format == 'single_elimination':
+            matches, num_rounds = generate_single_elimination_bracket(participants)
+            CURRENT_TOURNAMENT.matches = matches
+        elif tournament_format == 'double_elimination':
+            winners_matches, losers_matches, num_rounds = generate_double_elimination_bracket(participants)
+            CURRENT_TOURNAMENT.matches = winners_matches
+            CURRENT_TOURNAMENT.losers_bracket_matches = losers_matches
+        elif tournament_format == 'round_robin':
+            matches = generate_round_robin_bracket(participants)
+            CURRENT_TOURNAMENT.matches = matches
     
+    CURRENT_TOURNAMENT.current_round = 1
     return tournament_save_state()
+
+
+@eel.expose
+def tournament_form_teams(assignment_method: str = 'random', team_names_json: str = '[]') -> str:
+    """
+    (Re)form teams from the current tournament's participants.
+
+    Args:
+        assignment_method: 'random', 'seeded', or 'manual'
+        team_names_json: JSON list of optional custom team names
+
+    Returns:
+        JSON string of updated tournament state
+    """
+    global CURRENT_TOURNAMENT
+
+    if CURRENT_TOURNAMENT is None:
+        return json.dumps({'error': 'No tournament loaded'})
+
+    team_size = CURRENT_TOURNAMENT.team_size
+    if team_size <= 1:
+        return json.dumps({'error': 'Team formation only applies when team size > 1'})
+
+    participants = CURRENT_TOURNAMENT.participants
+    valid, error_msg = validate_team_formation(len(participants), team_size)
+    if not valid:
+        return json.dumps({'error': error_msg})
+
+    if assignment_method == 'seeded':
+        teams = form_teams_seeded(participants, team_size)
+    elif assignment_method == 'manual':
+        # Manual assignment is done client-side via tournament_set_team_members
+        return json.dumps({'error': 'Use tournament_set_team_members for manual assignment'})
+    else:
+        teams = form_teams_random(participants, team_size)
+
+    # Apply custom names if provided
+    try:
+        names = json.loads(team_names_json) if team_names_json else []
+    except (json.JSONDecodeError, TypeError):
+        names = []
+    for i, team in enumerate(teams):
+        if i < len(names) and names[i]:
+            team.name = names[i]
+
+    CURRENT_TOURNAMENT.teams = teams
+
+    # Regenerate the bracket with the new teams
+    matches, losers_matches = generate_team_bracket(teams, CURRENT_TOURNAMENT.format)
+    CURRENT_TOURNAMENT.matches = matches
+    CURRENT_TOURNAMENT.losers_bracket_matches = losers_matches
+    CURRENT_TOURNAMENT.current_round = 1
+    CURRENT_TOURNAMENT.completed = False
+    CURRENT_TOURNAMENT.winner = None
+    CURRENT_TOURNAMENT.winner_team = None
+
+    return tournament_save_state()
+
+
+@eel.expose
+def tournament_set_team_members(team_index: int, participants_json: str, team_name: str = '') -> str:
+    """
+    Manually set the members of a specific team.
+
+    Args:
+        team_index: 0-based index of the team
+        participants_json: JSON list of participant dicts (must match team_size)
+        team_name: Optional custom name for the team
+
+    Returns:
+        JSON string of updated tournament state
+    """
+    global CURRENT_TOURNAMENT
+
+    if CURRENT_TOURNAMENT is None:
+        return json.dumps({'error': 'No tournament loaded'})
+
+    team_size = CURRENT_TOURNAMENT.team_size
+    if team_size <= 1:
+        return json.dumps({'error': 'Team management only applies when team size > 1'})
+
+    members_data = json.loads(participants_json)
+    members = [Participant.from_dict(p) for p in members_data]
+
+    if len(members) != team_size:
+        return json.dumps({'error': f'Team must have exactly {team_size} members (got {len(members)})'})
+
+    # Ensure all members are part of the tournament's participant pool
+    pool_ids = {p.participant_id for p in CURRENT_TOURNAMENT.participants}
+    for m in members:
+        if m.participant_id not in pool_ids:
+            return json.dumps({'error': f"Participant '{m.name}' is not in the tournament pool"})
+
+    # Ensure no participant is on two teams
+    assigned = set()
+    for i, team in enumerate(CURRENT_TOURNAMENT.teams):
+        if i == team_index:
+            continue
+        for p in team.participants:
+            assigned.add(p.participant_id)
+    for m in members:
+        if m.participant_id in assigned:
+            return json.dumps({'error': f"Participant '{m.name}' is already on another team"})
+
+    if team_index >= len(CURRENT_TOURNAMENT.teams):
+        return json.dumps({'error': f'Team index {team_index} out of range'})
+
+    CURRENT_TOURNAMENT.teams[team_index].participants = members
+    if team_name:
+        CURRENT_TOURNAMENT.teams[team_index].name = team_name
+
+    return tournament_save_state()
+
+
+@eel.expose
+def tournament_team_balance() -> str:
+    """
+    Get a team balance report for the current tournament.
+
+    Returns:
+        JSON string with balance info
+    """
+    global CURRENT_TOURNAMENT
+
+    if CURRENT_TOURNAMENT is None:
+        return json.dumps({'error': 'No tournament loaded'})
+
+    if not CURRENT_TOURNAMENT.teams:
+        return json.dumps({'balanced': True, 'spread': 0.0, 'strengths': {}})
+
+    return json.dumps(team_balance_report(CURRENT_TOURNAMENT.teams))
 
 
 @eel.expose
@@ -232,43 +390,14 @@ def tournament_start_match(match_id: str) -> str:
     if match.completed:
         return json.dumps({'error': f'Match {match_id} already completed'})
     
-    if match.participant1 is None or match.participant2 is None:
+    # For team-based matches, check teams; otherwise check participants
+    if match.team1 is not None and match.team2 is not None:
+        pass  # team-based match, handled by build_match_bot_list
+    elif match.participant1 is None or match.participant2 is None:
         return json.dumps({'error': f'Match {match_id} has no participants'})
     
-    # Build bot list for match runner
-    bot_list = []
-    
-    # Add participant 1 to blue team
-    if match.participant1.participant_type == 'human':
-        bot_list.append({
-            'name': match.participant1.name,
-            'team': 0,
-            'type': 'human'
-        })
-    else:
-        bot_list.append({
-            'name': match.participant1.name,
-            'team': 0,
-            'type': 'rlbot',
-            'path': match.participant1.bot_config.get('path', '') if match.participant1.bot_config else '',
-            'skill': 10
-        })
-    
-    # Add participant 2 to orange team
-    if match.participant2.participant_type == 'human':
-        bot_list.append({
-            'name': match.participant2.name,
-            'team': 1,
-            'type': 'human'
-        })
-    else:
-        bot_list.append({
-            'name': match.participant2.name,
-            'team': 1,
-            'type': 'rlbot',
-            'path': match.participant2.bot_config.get('path', '') if match.participant2.bot_config else '',
-            'skill': 10
-        })
+    # Build bot list for match runner (handles both 1v1 and team-based matches)
+    bot_list = build_match_bot_list(match)
     
     # Build match settings, applying the tournament's custom mutators
     # (stored in CURRENT_TOURNAMENT.match_settings) with sensible defaults
@@ -357,12 +486,29 @@ def launch_tournament_match(bot_list: list, match_settings: dict, match_id: str)
             score_by_team = {ts['team_index']: ts['score'] for ts in team_scores}
             ordered_scores = [score_by_team.get(0, 0), score_by_team.get(1, 0)]
             
-            # Find the winner's name from bot_list
+            # Find the winner's name.
+            # For team-based matches the bracket stand-in participant is named
+            # after the team, so we must use the team name (not a bot name).
             winner_name = None
-            for bot in bot_list:
-                if bot['team'] == winning_team_index:
-                    winner_name = bot['name']
-                    break
+            match = None
+            if CURRENT_TOURNAMENT is not None:
+                for m in CURRENT_TOURNAMENT.matches:
+                    if m.match_id == match_id:
+                        match = m
+                        break
+                if match is None:
+                    for m in CURRENT_TOURNAMENT.losers_bracket_matches:
+                        if m.match_id == match_id:
+                            match = m
+                            break
+
+            if match is not None and match.team1 is not None and match.team2 is not None:
+                winner_name = match.team1.name if winning_team_index == 0 else match.team2.name
+            else:
+                for bot in bot_list:
+                    if bot['team'] == winning_team_index:
+                        winner_name = bot['name']
+                        break
             
             if winner_name:
                 print(f"DEBUG: Auto-recording winner: {winner_name} with score {winning_score}")
@@ -445,11 +591,30 @@ def tournament_record_result(match_id: str, winner_name: str, score_json: str) -
     match.winner = winner
     match.score = score
     match.completed = True
-    
+
+    # For team-based matches, record the winning team and update W/L
+    winning_team = None
+    losing_team = None
+    if CURRENT_TOURNAMENT.teams:
+        for t in CURRENT_TOURNAMENT.teams:
+            if t.team_id == winner.participant_id:
+                winning_team = t
+                break
+        if winning_team is not None:
+            match.winner_team = winning_team
+            winning_team.wins += 1
+            # Find the losing team
+            if match.team1 is not None and match.team2 is not None:
+                losing_team = match.team2 if match.team1.team_id == winning_team.team_id else match.team1
+                if losing_team is not None:
+                    losing_team.losses += 1
+
     # Check for tournament completion
     if is_tournament_final_match(match):
         print(f"DEBUG: Match {match_id} is the final match, tournament complete!")
         CURRENT_TOURNAMENT.winner = winner
+        if winning_team is not None:
+            CURRENT_TOURNAMENT.winner_team = winning_team
         CURRENT_TOURNAMENT.completed = True
     else:
         print(f"DEBUG: Match {match_id} is not final, advancing {winner_name}")
@@ -515,6 +680,19 @@ def advance_winner(match: Match, winner: Participant) -> None:
     else:
         print(f"DEBUG: advance_winner({match.match_id}) - next match {next_match_id} already has both participants")
         return
+
+    # For team-based matches, attach the winning team to the next match
+    if CURRENT_TOURNAMENT.teams:
+        winning_team = None
+        for t in CURRENT_TOURNAMENT.teams:
+            if t.team_id == winner.participant_id:
+                winning_team = t
+                break
+        if winning_team is not None:
+            if next_match.participant1 is winner and next_match.team1 is None:
+                next_match.team1 = winning_team
+            elif next_match.participant2 is winner and next_match.team2 is None:
+                next_match.team2 = winning_team
     
     print(f"DEBUG: advance_winner({match.match_id}) - {winner.name} assigned to {next_match_id} (slot {'participant1' if next_match.participant1 == winner else 'participant2'})")
     
@@ -603,9 +781,16 @@ def tournament_randomize_seeding() -> str:
         p.seed = i
     
     CURRENT_TOURNAMENT.participants = shuffled
-    
+
     # Regenerate bracket
-    if CURRENT_TOURNAMENT.format == 'single_elimination':
+    if CURRENT_TOURNAMENT.team_size > 1:
+        # Re-form teams randomly and regenerate the team bracket
+        teams = form_teams_random(shuffled, CURRENT_TOURNAMENT.team_size)
+        CURRENT_TOURNAMENT.teams = teams
+        matches, losers_matches = generate_team_bracket(teams, CURRENT_TOURNAMENT.format)
+        CURRENT_TOURNAMENT.matches = matches
+        CURRENT_TOURNAMENT.losers_bracket_matches = losers_matches
+    elif CURRENT_TOURNAMENT.format == 'single_elimination':
         matches, num_rounds = generate_single_elimination_bracket(shuffled)
         CURRENT_TOURNAMENT.matches = matches
     elif CURRENT_TOURNAMENT.format == 'double_elimination':
@@ -615,7 +800,7 @@ def tournament_randomize_seeding() -> str:
     elif CURRENT_TOURNAMENT.format == 'round_robin':
         matches = generate_round_robin_bracket(shuffled)
         CURRENT_TOURNAMENT.matches = matches
-    
+
     return tournament_save_state()
 
 

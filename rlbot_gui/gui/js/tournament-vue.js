@@ -123,7 +123,7 @@ export default {
                     <span class="tournament-format">{{ formatLabel }}</span>
                     <span class="tournament-status" v-if="tournamentState.completed">
                         <b-icon icon="trophy-fill" variant="warning"></b-icon>
-                        Winner: {{ tournamentState.winner.name }}
+                        Winner: {{ winnerDisplayName }}
                     </span>
                     <span class="tournament-status" v-else>
                         {{ getCurrentRoundName() }}
@@ -148,6 +148,30 @@ export default {
 
             <!-- Tournament Content -->
             <div class="tournament-content noscroll-flex">
+                <!-- Team Panel (Phase 2: team_size > 1) -->
+                <div class="team-panel" v-if="tournamentState.team_size > 1 && tournamentState.teams && tournamentState.teams.length > 0">
+                    <div class="team-panel-header">
+                        <h5>Teams ({{ tournamentState.team_size }}v{{ tournamentState.team_size }})</h5>
+                        <b-button @click="reformTeams" variant="outline-primary" size="sm" v-if="!tournamentState.completed">
+                            <b-icon icon="shuffle"></b-icon> Re-form Teams
+                        </b-button>
+                    </div>
+                    <div class="team-grid">
+                        <div v-for="(team, index) in tournamentState.teams" :key="team.team_id" class="team-card">
+                            <div class="team-card-name">
+                                {{ team.name }}
+                                <span class="team-record">{{ team.wins }}W - {{ team.losses }}L</span>
+                            </div>
+                            <div class="team-card-members">
+                                <div v-for="p in team.participants" :key="p.participant_id" class="team-card-member">
+                                    <b-icon :icon="p.participant_type === 'human' ? 'person' : 'robot'" font-scale="0.8"></b-icon>
+                                    {{ p.name }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Bracket View for Single/Double Elimination -->
                 <div class="bracket-view noscroll-flex" v-if="tournamentState.format !== 'round_robin'">
                     <div class="bracket-header">
@@ -184,6 +208,15 @@ export default {
                                             <span v-if="match.participant2">{{ match.participant2.name }}</span>
                                             <span v-else class="placeholder">Waiting...</span>
                                         </div>
+                                        <!-- Team members (Phase 2) -->
+                                        <div v-if="match.team1 && match.team2" class="match-team-members">
+                                            <div class="team-member-list">
+                                                <span v-for="p in match.team1.participants" :key="'t1-' + p.participant_id" class="team-member">{{ p.name }}</span>
+                                            </div>
+                                            <div class="team-member-list">
+                                                <span v-for="p in match.team2.participants" :key="'t2-' + p.participant_id" class="team-member">{{ p.name }}</span>
+                                            </div>
+                                        </div>
                                         <div v-if="match.score" class="match-score">
                                             {{ match.score[0] }} - {{ match.score[1] }}
                                         </div>
@@ -191,7 +224,7 @@ export default {
                                 </div>
                             </div>
                         </div>
-                        
+
                         <!-- Losers Bracket for Double Elimination -->
                         <div class="bracket-section" v-if="tournamentState.format === 'double_elimination' && losersBracketMatches.length > 0">
                             <h5 class="section-title">Losers Bracket</h5>
@@ -323,6 +356,30 @@ export default {
                     </b-form-select>
                 </b-form-group>
 
+                <b-form-group label="Team Size" label-for="tournament-team-size">
+                    <b-form-radio-group
+                        id="tournament-team-size"
+                        v-model="newTournament.team_size"
+                        buttons
+                        button-variant="outline-primary"
+                        size="sm"
+                    >
+                        <b-form-radio value="1" button-content="1v1"></b-form-radio>
+                        <b-form-radio value="2" button-content="2v2"></b-form-radio>
+                        <b-form-radio value="3" button-content="3v3"></b-form-radio>
+                        <b-form-radio value="4" button-content="4v4"></b-form-radio>
+                    </b-form-radio-group>
+                    <div class="text-muted small mt-1">
+                        <span v-if="newTournament.team_size > 1">
+                            {{ newTournament.team_size }} players per team.
+                            Select a multiple of {{ newTournament.team_size }} participants
+                            (at least {{ newTournament.team_size * 2 }}).
+                            Teams are formed automatically.
+                        </span>
+                        <span v-else>Individual players compete (no teams).</span>
+                    </div>
+                </b-form-group>
+
                 <!-- Mutator Settings -->
                 <div class="mutator-settings-section">
                     <h5>Match Settings (Optional)</h5>
@@ -409,13 +466,16 @@ export default {
 
                 <div class="modal-footer mt-3">
                     <b-button @click="$bvModal.hide('create-tournament-modal')" variant="secondary">Cancel</b-button>
-                    <b-button 
-                        @click="createTournament" 
+                    <b-button
+                        @click="createTournament"
                         variant="success"
-                        :disabled="selectedParticipants.length < 2"
+                        :disabled="!canCreateTournament"
                     >
                         Generate Bracket
                     </b-button>
+                    <div v-if="!canCreateTournament" class="text-danger small mt-1">
+                        {{ createBlockReason }}
+                    </div>
                 </div>
             </b-form>
         </b-modal>
@@ -467,6 +527,7 @@ export default {
             newTournament: {
                 name: '',
                 format: 'single_elimination',
+                team_size: 1,
                 mutators: { ...DEFAULT_MUTATORS }
             },
             currentMatch: null,
@@ -485,6 +546,26 @@ export default {
                 'round_robin': 'Round Robin'
             };
             return labels[this.tournamentState.format] || this.tournamentState.format;
+        },
+        canCreateTournament() {
+            const teamSize = Number(this.newTournament.team_size) || 1;
+            const count = this.selectedParticipants.length;
+            if (count < (teamSize > 1 ? teamSize * 2 : 2)) return false;
+            if (teamSize > 1 && count % teamSize !== 0) return false;
+            return true;
+        },
+        createBlockReason() {
+            const teamSize = Number(this.newTournament.team_size) || 1;
+            const count = this.selectedParticipants.length;
+            if (count < (teamSize > 1 ? teamSize * 2 : 2)) {
+                return `Select at least ${teamSize > 1 ? teamSize * 2 : 2} participants` +
+                    (teamSize > 1 ? ` (${teamSize} per team x 2 teams)` : '');
+            }
+            if (teamSize > 1 && count % teamSize !== 0) {
+                const missing = teamSize - (count % teamSize);
+                return `Participant count (${count}) is not divisible by team size (${teamSize}). Add ${missing} more to form full teams.`;
+            }
+            return '';
         },
         matchesByRound() {
             if (!this.tournamentState) return [];
@@ -697,11 +778,19 @@ export default {
         },
         
         async createTournament() {
-            if (this.selectedParticipants.length < 2) {
-                alert('Please select at least 2 participants');
+            const teamSize = Number(this.newTournament.team_size) || 1;
+            const minParticipants = teamSize > 1 ? teamSize * 2 : 2;
+            if (this.selectedParticipants.length < minParticipants) {
+                alert(`Please select at least ${minParticipants} participants` +
+                    (teamSize > 1 ? ` (${teamSize} per team x 2 teams)` : ''));
                 return;
             }
-            
+            if (teamSize > 1 && this.selectedParticipants.length % teamSize !== 0) {
+                const missing = teamSize - (this.selectedParticipants.length % teamSize);
+                alert(`Participant count (${this.selectedParticipants.length}) is not divisible by team size (${teamSize}). Add ${missing} more participant(s) to form full teams.`);
+                return;
+            }
+
             // Check for duplicate tournament name
             const existingTournament = this.savedTournaments.find(
                 t => t.name.toLowerCase() === this.newTournament.name.toLowerCase()
@@ -710,18 +799,24 @@ export default {
                 alert(`A tournament named "${this.newTournament.name}" already exists. Please choose a different name.`);
                 return;
             }
-            
+
             try {
                 const result = await eel.tournament_new(
                     this.newTournament.name,
                     this.newTournament.format,
                     JSON.stringify(this.selectedParticipants),
-                    JSON.stringify(this.newTournament.mutators)
+                    JSON.stringify(this.newTournament.mutators),
+                    teamSize
                 )();
-            
-                this.tournamentState = JSON.parse(result);
+
+                const state = JSON.parse(result);
+                if (state.error) {
+                    alert('Error creating tournament: ' + state.error);
+                    return;
+                }
+                this.tournamentState = state;
                 this.selectedParticipants = [];
-                this.newTournament = { name: '', format: 'single_elimination', mutators: { ...DEFAULT_MUTATORS } };
+                this.newTournament = { name: '', format: 'single_elimination', team_size: 1, mutators: { ...DEFAULT_MUTATORS } };
                 this.$bvModal.hide('create-tournament-modal');
             } catch (error) {
                 console.error('Error creating tournament:', error);
@@ -765,6 +860,35 @@ export default {
                 console.error('Error randomizing seeding:', error);
                 alert('Error randomizing seeding: ' + error);
             }
+        },
+
+        async reformTeams() {
+            if (this.tournamentState.completed) {
+                alert('Tournament is already complete.');
+                return;
+            }
+            if (!confirm('Re-form teams? This will reset the bracket and all match results.')) {
+                return;
+            }
+            try {
+                const result = await eel.tournament_form_teams('random')();
+                const state = JSON.parse(result);
+                if (state.error) {
+                    alert('Error re-forming teams: ' + state.error);
+                    return;
+                }
+                this.tournamentState = state;
+            } catch (error) {
+                console.error('Error re-forming teams:', error);
+                alert('Error re-forming teams: ' + error);
+            }
+        },
+
+        winnerDisplayName() {
+            if (!this.tournamentState) return '';
+            if (this.tournamentState.winner_team) return this.tournamentState.winner_team.name;
+            if (this.tournamentState.winner) return this.tournamentState.winner.name;
+            return '';
         },
         
         participantToBot(participant) {

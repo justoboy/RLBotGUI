@@ -699,19 +699,14 @@ def fetch_game_tick_packet_json():
 @eel.expose
 def get_tournament_bots():
     """
-    Returns available bots for tournament selection.
-    Returns human and all scanned bots (sorted alphabetically).
+    Returns available bots for tournament selection (sorted alphabetically).
+
+    Human players are NOT returned here. The frontend builds the human
+    participant list dynamically (count + usernames) so operators can enter
+    real Rocket League usernames and choose any number of humans. See the
+    "Human Players" section of the create-tournament modal in tournament-vue.js.
     """
     bots = scan_for_bots()
-    # Add human option with full participant data
-    human = {
-        'name': 'Human',
-        'type': 'human',
-        'participant_id': 'human',
-        'participant_type': 'human',
-        'image': 'imgs/human.png'
-    }
-    # Convert bots to tournament participant format
     participants = []
     for bot in bots:
         # Use full path as unique identifier to avoid conflicts with same-named bots
@@ -729,8 +724,6 @@ def get_tournament_bots():
         participants.append(participant)
     # Sort bots alphabetically by name
     participants.sort(key=lambda x: x['name'].lower())
-    # Add human at the top
-    participants.insert(0, human)
     return participants
 
 

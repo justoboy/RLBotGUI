@@ -2,8 +2,6 @@ import BotCard from './bot-card-vue.js'
 import BotPool from './bot-pool-vue.js'
 import MutatorField from './mutator-field-vue.js'
 
-const HUMAN = {'name': 'Human', 'type': 'human', 'image': 'imgs/human.png'};
-
 // Default mutator settings
 const DEFAULT_MUTATORS = {
     match_length: '5 Minutes',
@@ -163,12 +161,25 @@ export default {
                                 <span class="team-record">{{ team.wins }}W - {{ team.losses }}L</span>
                             </div>
                             <div class="team-card-members">
-                                <div v-for="p in team.participants" :key="p.participant_id" class="team-card-member">
+                                <div v-for="(p, slot) in team.participants" :key="slot" class="team-card-member">
+                                    <span class="team-member-slot">S{{ slot + 1 }}</span>
                                     <b-icon :icon="p.participant_type === 'human' ? 'person' : 'robot'" font-scale="0.8"></b-icon>
-                                    {{ p.name }}
+                                    <span class="team-member-name">{{ p.name }}</span>
+                                    <span class="team-member-reorder">
+                                        <b-icon icon="arrow-up" font-scale="0.7" class="reorder-btn"
+                                                :class="{ 'disabled': slot === 0 }"
+                                                @click="reorderTeamMember(index, slot, slot - 1)"></b-icon>
+                                        <b-icon icon="arrow-down" font-scale="0.7" class="reorder-btn"
+                                                :class="{ 'disabled': slot === team.participants.length - 1 }"
+                                                @click="reorderTeamMember(index, slot, slot + 1)"></b-icon>
+                                    </span>
                                 </div>
                             </div>
                         </div>
+                    </div>
+                    <div class="team-panel-hint text-muted small">
+                        <b-icon icon="info-circle" font-scale="0.8"></b-icon>
+                        Slot order determines the in-game seat (S1 = slot 1). Use the arrows to assign which human fills which seat.
                     </div>
                 </div>
 
@@ -251,6 +262,15 @@ export default {
                                             <span v-if="match.participant2">{{ match.participant2.name }}</span>
                                             <span v-else class="placeholder">Waiting...</span>
                                         </div>
+                                        <!-- Team members (Phase 2) -->
+                                        <div v-if="match.team1 && match.team2" class="match-team-members">
+                                            <div class="team-member-list">
+                                                <span v-for="p in match.team1.participants" :key="'lt1-' + p.participant_id" class="team-member">{{ p.name }}</span>
+                                            </div>
+                                            <div class="team-member-list">
+                                                <span v-for="p in match.team2.participants" :key="'lt2-' + p.participant_id" class="team-member">{{ p.name }}</span>
+                                            </div>
+                                        </div>
                                         <div v-if="match.score" class="match-score">
                                             {{ match.score[0] }} - {{ match.score[1] }}
                                         </div>
@@ -260,7 +280,7 @@ export default {
                         </div>
                     </div>
                 </div>
-                
+
                 <!-- Round Robin View -->
                 <div class="round-robin-view noscroll-flex" v-else>
                     <div class="round-robin-header">
@@ -314,9 +334,15 @@ export default {
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr v-for="(standing, index) in standings" :key="standing.participant.participant_id">
+                                <tr v-for="(standing, index) in standings" :key="standing.participant.team_id || standing.participant.participant_id">
                                     <td>{{ index + 1 }}</td>
-                                    <td class="participant-name">{{ standing.participant.name }}</td>
+                                    <td class="participant-name">
+                                        <span v-if="standing.participant.team_id">
+                                            {{ standing.participant.name }}
+                                            <small class="standings-team-members">({{ standing.participant.participants.map(p => p.name).join(', ') }})</small>
+                                        </span>
+                                        <span v-else>{{ standing.participant.name }}</span>
+                                    </td>
                                     <td>{{ standing.played }}</td>
                                     <td>{{ standing.wins }}</td>
                                     <td>{{ standing.draws }}</td>
@@ -368,15 +394,31 @@ export default {
                         <b-form-radio value="2" button-content="2v2"></b-form-radio>
                         <b-form-radio value="3" button-content="3v3"></b-form-radio>
                         <b-form-radio value="4" button-content="4v4"></b-form-radio>
+                        <b-form-radio value="5" button-content="5v5"></b-form-radio>
                     </b-form-radio-group>
                     <div class="text-muted small mt-1">
-                        <span v-if="newTournament.team_size > 1">
+                        <span v-if="newTournament.team_size > 1 && !newTournament.allow_duplicates">
                             {{ newTournament.team_size }} players per team.
                             Select a multiple of {{ newTournament.team_size }} participants
                             (at least {{ newTournament.team_size * 2 }}).
                             Teams are formed automatically.
                         </span>
+                        <span v-else-if="newTournament.team_size > 1">
+                            Party mode: each selected participant fills an entire team
+                            (duplicated {{ newTournament.team_size }}x).
+                            Select at least 2 participants.
+                        </span>
                         <span v-else>Individual players compete (no teams).</span>
+                    </div>
+                    <b-form-checkbox
+                        v-if="newTournament.team_size > 1"
+                        v-model="newTournament.allow_duplicates"
+                        class="mt-2"
+                    >
+                        Allow duplicate bots (party mode)
+                    </b-form-checkbox>
+                    <div v-if="newTournament.team_size > 1 && newTournament.allow_duplicates" class="text-muted small mt-1">
+                        The same bot can be duplicated within a team (e.g., Bot1+Bot1 vs Bot2+Bot2).
                     </div>
                 </b-form-group>
 
@@ -449,8 +491,43 @@ export default {
                     </div>
                 </b-form-group>
 
+                <!-- Human Players section -->
+                <b-form-group label="Human Players" label-for="human-count">
+                    <div class="human-players-section">
+                        <div class="human-count-row">
+                            <label class="mr-2">Count:</label>
+                            <b-form-input
+                                id="human-count"
+                                type="number"
+                                min="0"
+                                max="10"
+                                size="sm"
+                                style="width: 80px;"
+                                :value="newTournament.human_count"
+                                @input="setHumanCount($event.target.value)"
+                            ></b-form-input>
+                            <small class="text-muted ml-2">
+                                Human players are added to the participant pool automatically.
+                            </small>
+                        </div>
+                        <div v-if="newTournament.human_count > 0" class="human-names-list mt-2">
+                            <div v-for="(name, idx) in newTournament.human_names" :key="'hn_' + idx" class="human-name-row">
+                                <span class="human-name-label">Player {{ idx + 1 }}:</span>
+                                <b-form-input
+                                    type="text"
+                                    size="sm"
+                                    style="width: 200px;"
+                                    :placeholder="'Human ' + (idx + 1)"
+                                    :value="name"
+                                    @input="setHumanName(idx, $event.target.value)"
+                                ></b-form-input>
+                            </div>
+                        </div>
+                    </div>
+                </b-form-group>
+
                 <div class="selected-participants">
-                    <h5>Selected ({{ selectedParticipants.length }})</h5>
+                    <h5>Selected ({{ totalParticipants }})</h5>
                     <div class="selected-list">
                         <b-badge 
                             v-for="p in selectedParticipants" 
@@ -460,6 +537,15 @@ export default {
                         >
                             {{ p.name }}
                             <b-icon icon="x-circle" @click="toggleParticipantSelection(p)" style="cursor: pointer; margin-left: 5px;"></b-icon>
+                        </b-badge>
+                        <b-badge 
+                            v-for="h in humanParticipants" 
+                            :key="h.participant_id"
+                            variant="info"
+                            class="m-1"
+                        >
+                            {{ h.name }}
+                            <b-icon icon="person" style="margin-left: 5px;"></b-icon>
                         </b-badge>
                     </div>
                 </div>
@@ -528,6 +614,9 @@ export default {
                 name: '',
                 format: 'single_elimination',
                 team_size: 1,
+                allow_duplicates: false,
+                human_count: 0,
+                human_names: [],
                 mutators: { ...DEFAULT_MUTATORS }
             },
             currentMatch: null,
@@ -547,16 +636,44 @@ export default {
             };
             return labels[this.tournamentState.format] || this.tournamentState.format;
         },
+        // Dynamic human participants built from human_count / human_names config.
+        humanParticipants() {
+            const count = Math.max(0, Math.min(this.newTournament.human_count || 0, 10));
+            const list = [];
+            for (let i = 0; i < count; i++) {
+                const name = (this.newTournament.human_names && this.newTournament.human_names[i]) || '';
+                list.push({
+                    name: name.trim() || `Human ${i + 1}`,
+                    participant_id: `human_dynamic_${i}`,
+                    participant_type: 'human',
+                    type: 'human'
+                });
+            }
+            return list;
+        },
+        // Total participants = selected bots + dynamic humans.
+        totalParticipants() {
+            return this.selectedParticipants.length + this.humanParticipants.length;
+        },
         canCreateTournament() {
             const teamSize = Number(this.newTournament.team_size) || 1;
-            const count = this.selectedParticipants.length;
+            const count = this.totalParticipants;
+            if (teamSize > 1 && this.newTournament.allow_duplicates) {
+                return count >= 2;
+            }
             if (count < (teamSize > 1 ? teamSize * 2 : 2)) return false;
             if (teamSize > 1 && count % teamSize !== 0) return false;
             return true;
         },
         createBlockReason() {
             const teamSize = Number(this.newTournament.team_size) || 1;
-            const count = this.selectedParticipants.length;
+            const count = this.totalParticipants;
+            if (teamSize > 1 && this.newTournament.allow_duplicates) {
+                if (count < 2) {
+                    return 'Select at least 2 participants (one per team) for party mode';
+                }
+                return '';
+            }
             if (count < (teamSize > 1 ? teamSize * 2 : 2)) {
                 return `Select at least ${teamSize > 1 ? teamSize * 2 : 2} participants` +
                     (teamSize > 1 ? ` (${teamSize} per team x 2 teams)` : '');
@@ -627,44 +744,66 @@ export default {
         },
         standings() {
             if (!this.tournamentState || this.tournamentState.format !== 'round_robin') return [];
-            
+
+            const isTeamMode = (this.tournamentState.team_size > 1) &&
+                this.tournamentState.teams && this.tournamentState.teams.length > 0;
+
             // Calculate standings from matches
             const standings = {};
-            
-            // Initialize standings for all participants
-            for (const p of this.tournamentState.participants) {
-                standings[p.participant_id] = {
-                    participant: p,
-                    played: 0,
-                    wins: 0,
-                    draws: 0,
-                    losses: 0,
-                    goals_for: 0,
-                    goals_against: 0,
-                    goal_difference: 0,
-                    points: 0
-                };
+
+            // Initialize standings keyed by the entity that fills the bracket slot:
+            // teams (team_id) in team mode, participants (participant_id) in 1v1.
+            if (isTeamMode) {
+                for (const t of this.tournamentState.teams) {
+                    standings[t.team_id] = {
+                        participant: t,
+                        played: 0,
+                        wins: 0,
+                        draws: 0,
+                        losses: 0,
+                        goals_for: 0,
+                        goals_against: 0,
+                        goal_difference: 0,
+                        points: 0
+                    };
+                }
+            } else {
+                for (const p of this.tournamentState.participants) {
+                    standings[p.participant_id] = {
+                        participant: p,
+                        played: 0,
+                        wins: 0,
+                        draws: 0,
+                        losses: 0,
+                        goals_for: 0,
+                        goals_against: 0,
+                        goal_difference: 0,
+                        points: 0
+                    };
+                }
             }
-            
+
             // Process completed matches
             for (const match of this.tournamentState.matches) {
                 if (!match.completed || !match.score) continue;
                 if (!match.participant1 || !match.participant2) continue;
-                
+
                 const p1Id = match.participant1.participant_id;
                 const p2Id = match.participant2.participant_id;
+                if (!standings[p1Id] || !standings[p2Id]) continue;
+
                 const [score1, score2] = match.score;
-                
+
                 // Update games played
                 standings[p1Id].played++;
                 standings[p2Id].played++;
-                
+
                 // Update goals
                 standings[p1Id].goals_for += score1;
                 standings[p1Id].goals_against += score2;
                 standings[p2Id].goals_for += score2;
                 standings[p2Id].goals_against += score1;
-                
+
                 // Determine winner/draw
                 if (score1 > score2) {
                     standings[p1Id].wins++;
@@ -681,12 +820,12 @@ export default {
                     standings[p2Id].points += 1;
                 }
             }
-            
+
             // Calculate goal difference
             for (const pId of Object.keys(standings)) {
                 standings[pId].goal_difference = standings[pId].goals_for - standings[pId].goals_against;
             }
-            
+
             // Convert to array and sort
             const result = Object.values(standings);
             result.sort((a, b) => {
@@ -694,7 +833,7 @@ export default {
                 if (b.goal_difference !== a.goal_difference) return b.goal_difference - a.goal_difference;
                 return b.goals_for - a.goals_for;
             });
-            
+
             return result;
         }
     },
@@ -757,14 +896,13 @@ export default {
         },
         
         async loadBotPool() {
-            // Load bots from the main pool
-            const response = await fetch('js/bot-pool-vue.js');
-            // We'll use a simpler approach - get bots from eel
+            // Load bots from the backend pool. Humans are NOT in this pool —
+            // they are configured separately in the "Human Players" section
+            // (dynamic count + custom usernames) and merged in at create time.
             if (eel.get_tournament_bots) {
                 this.botPool = await eel.get_tournament_bots()();
             } else {
-                // Default to human if no bots available
-                this.botPool = [HUMAN];
+                this.botPool = [];
             }
         },
         
@@ -777,18 +915,41 @@ export default {
             }
         },
         
+        // --- Dynamic human management ---
+        setHumanCount(count) {
+            const c = Math.max(0, Math.min(Number(count) || 0, 10));
+            this.newTournament.human_count = c;
+            // Resize the names array to match
+            const names = this.newTournament.human_names || [];
+            while (names.length < c) names.push('');
+            this.newTournament.human_names = names.slice(0, c);
+        },
+        setHumanName(index, name) {
+            if (!this.newTournament.human_names) this.newTournament.human_names = [];
+            this.newTournament.human_names[index] = name;
+        },
+
         async createTournament() {
             const teamSize = Number(this.newTournament.team_size) || 1;
-            const minParticipants = teamSize > 1 ? teamSize * 2 : 2;
-            if (this.selectedParticipants.length < minParticipants) {
-                alert(`Please select at least ${minParticipants} participants` +
-                    (teamSize > 1 ? ` (${teamSize} per team x 2 teams)` : ''));
-                return;
-            }
-            if (teamSize > 1 && this.selectedParticipants.length % teamSize !== 0) {
-                const missing = teamSize - (this.selectedParticipants.length % teamSize);
-                alert(`Participant count (${this.selectedParticipants.length}) is not divisible by team size (${teamSize}). Add ${missing} more participant(s) to form full teams.`);
-                return;
+            const allowDuplicates = teamSize > 1 && !!this.newTournament.allow_duplicates;
+            const total = this.totalParticipants;
+            if (allowDuplicates) {
+                if (total < 2) {
+                    alert('Please select at least 2 participants (one per team) for party mode');
+                    return;
+                }
+            } else {
+                const minParticipants = teamSize > 1 ? teamSize * 2 : 2;
+                if (total < minParticipants) {
+                    alert(`Please select at least ${minParticipants} participants` +
+                        (teamSize > 1 ? ` (${teamSize} per team x 2 teams)` : ''));
+                    return;
+                }
+                if (teamSize > 1 && total % teamSize !== 0) {
+                    const missing = teamSize - (total % teamSize);
+                    alert(`Participant count (${total}) is not divisible by team size (${teamSize}). Add ${missing} more participant(s) to form full teams.`);
+                    return;
+                }
             }
 
             // Check for duplicate tournament name
@@ -800,13 +961,17 @@ export default {
                 return;
             }
 
+            // Combine selected bots + dynamic humans into the full participant list
+            const allParticipants = [...this.selectedParticipants, ...this.humanParticipants];
+
             try {
                 const result = await eel.tournament_new(
                     this.newTournament.name,
                     this.newTournament.format,
-                    JSON.stringify(this.selectedParticipants),
+                    JSON.stringify(allParticipants),
                     JSON.stringify(this.newTournament.mutators),
-                    teamSize
+                    teamSize,
+                    allowDuplicates
                 )();
 
                 const state = JSON.parse(result);
@@ -816,7 +981,7 @@ export default {
                 }
                 this.tournamentState = state;
                 this.selectedParticipants = [];
-                this.newTournament = { name: '', format: 'single_elimination', team_size: 1, mutators: { ...DEFAULT_MUTATORS } };
+                this.newTournament = { name: '', format: 'single_elimination', team_size: 1, allow_duplicates: false, human_count: 0, human_names: [], mutators: { ...DEFAULT_MUTATORS } };
                 this.$bvModal.hide('create-tournament-modal');
             } catch (error) {
                 console.error('Error creating tournament:', error);
@@ -881,6 +1046,24 @@ export default {
             } catch (error) {
                 console.error('Error re-forming teams:', error);
                 alert('Error re-forming teams: ' + error);
+            }
+        },
+
+        async reorderTeamMember(teamIndex, fromSlot, toSlot) {
+            if (toSlot < 0) return;
+            const team = this.tournamentState.teams[teamIndex];
+            if (!team || toSlot >= team.participants.length) return;
+            try {
+                const result = await eel.tournament_reorder_team_member(teamIndex, fromSlot, toSlot)();
+                const state = JSON.parse(result);
+                if (state.error) {
+                    alert('Error reordering team member: ' + state.error);
+                    return;
+                }
+                this.tournamentState = state;
+            } catch (error) {
+                console.error('Error reordering team member:', error);
+                alert('Error reordering team member: ' + error);
             }
         },
 

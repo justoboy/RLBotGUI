@@ -1,7 +1,7 @@
 """
 Team formation and team-based bracket logic for tournaments.
 
-Supports 1v1, 2v2, 3v3, and 4v4 team sizes.
+Supports 1v1, 2v2, 3v3, 4v4, and 5v5 team sizes.
 """
 import random
 import string
@@ -15,8 +15,8 @@ from rlbot_gui.tournament.bracket_generator import (
     generate_round_robin_bracket
 )
 
-VALID_TEAM_SIZES = (1, 2, 3, 4)
-MAX_PARTICIPANTS_PER_TEAM = 4  # RLBot supports up to 4 per side
+VALID_TEAM_SIZES = (1, 2, 3, 4, 5)
+MAX_PARTICIPANTS_PER_TEAM = 5  # Rocket League has 5 kickoff spawns per side (max 5v5)
 
 
 def _new_team_id() -> str:
@@ -28,15 +28,28 @@ def _team_name(index: int) -> str:
     return f"Team {string.ascii_uppercase[index] if index < 26 else index + 1}"
 
 
-def validate_team_formation(num_participants: int, team_size: int) -> Tuple[bool, str]:
+def validate_team_formation(num_participants: int, team_size: int, allow_duplicates: bool = False) -> Tuple[bool, str]:
     """
     Validate that participants can be split into full teams.
+
+    Args:
+        num_participants: Number of participants in the pool.
+        team_size: Number of participants per team.
+        allow_duplicates: When True (party mode), each participant becomes one
+            team (duplicated internally), so only >= 2 participants are needed.
 
     Returns:
         (is_valid, error_message)
     """
     if team_size not in VALID_TEAM_SIZES:
         return False, f"Team size must be one of {VALID_TEAM_SIZES}"
+    if allow_duplicates:
+        if num_participants < 2:
+            return False, (
+                f"Need at least 2 participants (one per team) for duplicate mode, "
+                f"got {num_participants}"
+            )
+        return True, ''
     if num_participants < team_size * 2:
         return False, (
             f"Need at least {team_size * 2} participants "
@@ -51,22 +64,55 @@ def validate_team_formation(num_participants: int, team_size: int) -> Tuple[bool
     return True, ''
 
 
-def form_teams_random(participants: List[Participant], team_size: int) -> List[Team]:
+def form_teams_random(participants: List[Participant], team_size: int, allow_duplicates: bool = False) -> List[Team]:
     """
     Form teams by randomly shuffling participants and chunking into teams.
+
+    Args:
+        participants: List of participants to form teams from.
+        team_size: Number of participants per team.
+        allow_duplicates: If True, each participant is duplicated team_size times
+            to form a team (e.g., bot1+bot1 for 2v2). This enables party-mode
+            style tournaments where fewer unique bots are needed.
     """
     shuffled = list(participants)
     random.shuffle(shuffled)
+    if allow_duplicates:
+        return _chunk_into_duplicate_teams(shuffled, team_size)
     return _chunk_into_teams(shuffled, team_size)
 
 
-def form_teams_seeded(participants: List[Participant], team_size: int) -> List[Team]:
+def form_teams_seeded(participants: List[Participant], team_size: int, allow_duplicates: bool = False) -> List[Team]:
     """
     Form teams using a snake draft based on participant seed order.
     Seed 1 goes to team 1, seed 2 to team 2, ... then back down.
     This spreads top seeds across teams for balance.
+
+    Args:
+        participants: List of participants to form teams from.
+        team_size: Number of participants per team.
+        allow_duplicates: If True, each participant is duplicated team_size times
+            to form a team (e.g., bot1+bot1 for 2v2). Requires len(participants)
+            == number of teams (not team_size * number of teams).
     """
     ordered = sorted(participants, key=lambda p: p.seed)
+
+    if allow_duplicates:
+        # Each participant becomes one team (duplicated internally)
+        num_teams = len(ordered)
+        teams: List[Team] = [
+            Team(team_id=_new_team_id(), name=_team_name(i))
+            for i in range(num_teams)
+        ]
+        for i, p in enumerate(ordered):
+            teams[i].participants = [Participant(
+                name=p.name,
+                participant_id=p.participant_id,
+                participant_type=p.participant_type,
+                bot_config=p.bot_config
+            ) for _ in range(team_size)]
+        return teams
+
     num_teams = len(ordered) // team_size
 
     teams: List[Team] = [
@@ -117,6 +163,24 @@ def _chunk_into_teams(participants: List[Participant], team_size: int) -> List[T
             team_id=_new_team_id(),
             name=_team_name(i // team_size),
             participants=chunk
+        ))
+    return teams
+
+
+def _chunk_into_duplicate_teams(participants: List[Participant], team_size: int) -> List[Team]:
+    """Each participant is duplicated to form one team (party-mode style)."""
+    teams = []
+    for i, p in enumerate(participants):
+        duped = [Participant(
+            name=p.name,
+            participant_id=p.participant_id,
+            participant_type=p.participant_type,
+            bot_config=p.bot_config
+        ) for _ in range(team_size)]
+        teams.append(Team(
+            team_id=_new_team_id(),
+            name=_team_name(i),
+            participants=duped
         ))
     return teams
 
@@ -198,10 +262,15 @@ def build_match_bot_list(match: Match) -> List[dict]:
     bot_list = []
 
     def add_participant(p: Participant, team_index: int, slot: int):
+        # Always include 'skill' and 'path' so create_player_config() in
+        # match_runner.py (which reads bot['skill'] unconditionally) never
+        # raises a KeyError. Humans get skill=None (ignored) and no path.
         entry = {
             'name': p.name,
             'team': team_index,
-            'slot': slot
+            'slot': slot,
+            'skill': None,
+            'path': ''
         }
         if p.participant_type == 'human':
             entry['type'] = 'human'

@@ -238,6 +238,13 @@
     font-weight: 500;
 }
 
+.standings-table .standings-team-members {
+    color: #999;
+    font-weight: 400;
+    font-size: 0.75rem;
+    margin-left: 4px;
+}
+
 .standings-table .points {
     color: #ffd700;
     font-weight: bold;
@@ -881,4 +888,85 @@
     background: rgba(255, 255, 255, 0.08);
     padding: 1px 5px;
     border-radius: 3px;
+}
+
+/* Phase 2: Slot assignment in team panel */
+.team-member-slot {
+    font-size: 0.65rem;
+    font-weight: bold;
+    color: #0d6efd;
+    background: rgba(13, 110, 253, 0.15);
+    padding: 1px 4px;
+    border-radius: 3px;
+    min-width: 22px;
+    text-align: center;
+}
+
+.team-member-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.team-member-reorder {
+    display: flex;
+    gap: 2px;
+    margin-left: auto;
+}
+
+.reorder-btn {
+    cursor: pointer;
+    color: #aaa;
+    padding: 1px;
+    border-radius: 3px;
+}
+
+.reorder-btn:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.reorder-btn.disabled {
+    opacity: 0.25;
+    cursor: default;
+    pointer-events: none;
+}
+
+.team-panel-hint {
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+/* Human Players section in create tournament modal */
+.human-players-section {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    padding: 10px 12px;
+}
+
+.human-count-row {
+    display: flex;
+    align-items: center;
+}
+
+.human-names-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.human-name-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.human-name-label {
+    font-size: 0.8rem;
+    color: #aaa;
+    min-width: 70px;
 }

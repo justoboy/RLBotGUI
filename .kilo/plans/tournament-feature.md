@@ -1,7 +1,7 @@
 # Tournament Feature Implementation Plan
 
 ## Overview
-Add a new "Tournament" tab to RLBotGUI that allows users to create tournament brackets, add bots/humans to a pool, form teams, and run matches through a tournament structure. **Supports 1v1, 2v2, 3v3, and 4v4 team sizes.**
+Add a new "Tournament" tab to RLBotGUI that allows users to create tournament brackets, add bots/humans to a pool, form teams, and run matches through a tournament structure. **Supports 1v1, 2v2, 3v3, 4v4, and 5v5 team sizes** (Rocket League has 5 kickoff spawns per side, so 5v5 is the maximum).
 
 ## Current Architecture Analysis
 
@@ -31,7 +31,7 @@ Main component with sub-components:
 #### Key Features
 1. **Tournament Creation**
    - Tournament name input
-   - **Team size selection: 1v1, 2v2, 3v3, 4v4**
+    - **Team size selection: 1v1, 2v2, 3v3, 4v4, 5v5**
    - Format selection: Single Elimination, Double Elimination, Round Robin
    - **Participant count auto-adjustment based on team size** (e.g., 2v2 with 8 teams = 16 participants)
 
@@ -80,7 +80,7 @@ Similar to `story_runner.py`, expose Eel functions:
 class TournamentState:
     name: str
     format: str  # 'single_elimination', 'double_elimination', 'round_robin'
-    team_size: int  # 1, 2, 3, or 4
+    team_size: int  # 1, 2, 3, 4, or 5
     teams: List[Team]  # List of teams with their members
     matches: List[Match]
     current_round: int
@@ -115,6 +115,7 @@ class Match:
 | 2v2 | 2 | 4, 8, 16 | 4, 8, 16, 32 |
 | 3v3 | 2 | 4, 8, 16 | 6, 12, 24, 48 |
 | 4v4 | 2 | 4, 8, 16 | 8, 16, 32, 64 |
+| 5v5 | 2 | 4, 8, 16 | 10, 20, 40, 80 |
 
 #### Single Elimination
 - Standard bracket: 2^n teams
@@ -186,8 +187,8 @@ rlbot_gui/
 |  ( ) Double Elimination          |
 |  ( ) Round Robin                 |
 |                                  |
-|  Team Size:                      |
-|  [1v1] [2v2] [3v3] [4v4]        |
+ |  Team Size:                      |
+ |  [1v1] [2v2] [3v3] [4v4] [5v5]  |
 |                                  |
 |  Teams: 4                        |
 |  (Auto-adjusts based on format)  |
@@ -322,48 +323,97 @@ rlbot_gui/
 
 ## Recommended Implementation Order
 
-1. **Phase 1: MVP (Single Elimination, 1v1)**
-   - Basic tournament creation
-   - Single elimination bracket generation
-   - Add participants from pool
-   - Start matches, record winners
-   - Advance to next round
-   - Declare tournament winner
-   - Auto-save on match result
+> **Status legend:** ✅ implemented · 🚧 in progress · ⬜ not started
 
-2. **Phase 2: Team Size Support**
-   - **Team formation UI and logic**
-   - **Support 2v2, 3v3, 4v4 team sizes**
-   - **Team-based bracket display**
-   - **Team slot assignment for matches**
+1. **Phase 1: MVP (Single Elimination, 1v1)** — ✅ COMPLETE
+   - ✅ Basic tournament creation
+   - ✅ Single elimination bracket generation
+   - ✅ Add participants from pool
+   - ✅ Start matches, record winners
+   - ✅ Advance to next round
+   - ✅ Declare tournament winner
+   - ✅ Auto-save on match result
+   - ✅ Import/export tournaments (implemented in Phase 1, not Phase 3 as originally planned)
 
-3. **Phase 3: Enhanced Features**
-   - Round robin format
-   - Double elimination format
-   - Better bracket visualization
-   - Export/import tournament
+2. **Phase 2: Team Size Support + Multi-Human + Formats** — 🚧 IN PROGRESS
+   - ✅ **Team formation UI and logic** (random, seeded snake draft, manual, party-mode duplicates)
+   - ✅ **Support 2v2, 3v3, 4v4 team sizes**
+   - ✅ **5v5 team size** (Rocket League has 5 kickoff spawns per side; max team size)
+   - ✅ **Team-based bracket display** (team names + member lists per slot)
+   - ✅ **Team slot assignment for matches** (reorder members within a team)
+   - ✅ **Allow duplicate bots (party mode)** — same bot can fill multiple seats on a team
+   - ✅ **Double elimination format** (implemented in Phase 2, not Phase 3 as originally planned)
+   - ✅ **Round robin format** (implemented in Phase 2, not Phase 3 as originally planned)
+   - ✅ **Multi-human support** — dynamic human count + custom usernames in the create-tournament modal
+   - ✅ **Human slot assignment** — humans are participants like bots; team formation assigns them to seats; `build_match_bot_list()` maps each to the correct team/slot
+   - **Note**: Both main GUI and tournament use the same `start_match_helper` / `eel.start_match` entry point ([`gui.py:62`](rlbot_gui/gui.py:62)), so no separate LAN plumbing is needed. The `bot_list` passed to `start_match_helper` correctly reflects the chosen human count, and team slot indices align with the game's expected player ordering.
 
-4. **Phase 4: Polish**
+3. **Phase 3: Polish / Enhanced Features** — ⬜ NOT STARTED
+   - **LAN Match Workflow (multi-human tournaments)** — see [LAN Match Workflow](#lan-match-workflow-multi-human-tournaments) below
+   - Better bracket visualization — reference image: [`rl_tournament_bracket.png`](rl_tournament_bracket.png) (shows how brackets render in the base Rocket League game)
    - Tournament templates
    - Statistics tracking
    - Shareable tournament files
-   - Team balance indicators
+   - Team balance indicators (basic `team_balance_report()` exists; UI not wired)
+
+## LAN Match Workflow (Multi-Human Tournaments)
+
+> **Context:** RLBotGUI v4 hijacks a local LAN server session. Certain actions **tear down the hosting lobby**, forcing human players to manually reconnect:
+> - **Changing match settings** (game mode, mutators, map) → Rocket League closes the lobby and spins up a new local instance.
+> - **The match ends** → the game tears down the temporary server session to return to a lobby state.
+> - **Injecting different bots** → swapping an existing bot sometimes works on the fly, but **adding additional bot slots mid-game often crashes the local host script**, requiring a lobby rebuild.
+>
+> **Consequence:** If a tournament match with humans is launched directly (bots + humans together), the host has to *quickly pause the game before kickoff* to set up the LAN host and invite players. This is fragile and annoying to repeat every match.
+
+### Recommended Flow (Phase 3)
+When a match contains **one or more human participants**, do **not** launch the real match immediately. Instead:
+
+1. **Open a "staging" match with no bots** — launch the match with only the human slots (or an empty lobby) so the game loads into the map and the host has time to:
+   - Press **Home** → click **Host** inside Rocket Plugin to open the port.
+   - Let each human friend **one-click Join** (their local IP stays saved in the Rocket Plugin text box — they just press Home → Join).
+2. **Players-ready gate** — show a **"Players Ready?"** button in the tournament UI. The real match should only start once the operator confirms all humans are connected.
+3. **Start the real match with `Existing Match Behaviour = Continue and Spawn`** — this injects the bots into the already-hosted lobby *without* tearing it down, so humans stay connected.
+
+### Implementation Notes
+- The match launch path already converges on [`start_match_helper`](rlbot_gui/match_runner/match_runner.py:184) / `eel.start_match`. The `match_settings['match_behavior']` field controls `existing_match_behavior` (see [`match_runner.py:197`](rlbot_gui/match_runner/match_runner.py:197)). For the staging→real flow, the **real** match must use `'Continue And Spawn'`.
+- **Staging match**: build a `bot_list` containing only the human entries (or an empty list) and launch with `instant_start` disabled so the game idles in the map/lobby. This gives the host time to set up the LAN host.
+- **Real match**: build the full `bot_list` (humans + bots) via [`build_match_bot_list()`](rlbot_gui/tournament/team_manager.py:256) and launch with `match_behavior = 'Continue And Spawn'` so bots spawn into the existing lobby.
+- **UI**: Add a "Players Ready?" confirmation button in the tournament match view. When a match has humans, clicking "Start Match" should:
+  1. Launch the staging match (no bots, `instant_start = False`).
+  2. Show the "Players Ready?" button.
+  3. On confirmation, launch the real match (`Continue And Spawn`).
+- **Detection**: A match "has humans" if any participant in `team1`/`team2` (or `participant1`/`participant2` for 1v1) has `participant_type == 'human'`.
+- **Fallback**: If the operator prefers the old behavior, allow a "Start immediately" option that launches the full match directly (host must pause quickly to set up LAN).
+- **Warning display**: Show a warning banner in the tournament UI when a match has humans, explaining the LAN reconnection behavior and the recommended staging flow.
+
+### Edge Cases
+- **1v1 with a human**: Same staging flow applies (1 human + 1 bot).
+- **All-bot matches**: No staging needed — launch directly (no humans to connect).
+- **Match ends**: The lobby tears down naturally. The next match in the tournament will need the staging flow again if it has humans.
+- **Bot swap mid-game**: Avoid adding bot slots mid-game (crashes the host script). Always use the staging→real flow for matches with humans.
 
 ## Design Decisions (Confirmed)
 
-1. **MVP Scope**: Single elimination only, starting with 1v1
-2. **Team Size Progression**: Add 2v2, 3v3, 4v4 in Phase 2
-3. **Draw handling**: Rocket League overtime handles draws naturally; no special handling needed unless server error occurs
-4. **Human participants**: **Track team slot assignments** (single slot at a time for multi-player humans)
-5. **Save behavior**: Auto-save on every match result
-6. **Bracket visualization**: Custom simple implementation first, showing team names/members
-7. **Team Formation**: Manual or automatic before bracket generation
+  1. **MVP Scope**: Single elimination only, starting with 1v1
+  2. **Team Size Progression**: 2v2, 3v3, 4v4, and 5v5 added in Phase 2 (5v5 is the max — Rocket League has 5 kickoff spawns per side)
+  3. **Draw handling**: Rocket League overtime handles draws naturally; no special handling needed unless server error occurs
+  4. **Human participants**: Humans are first-class participants (like bots) with `participant_type: 'human'`. The frontend owns the human list (dynamic count + custom usernames) so operators can enter real Rocket League usernames. Team formation assigns humans to seats; `build_match_bot_list()` maps each to the correct team/slot.
+  5. **Save behavior**: Auto-save on every match result
+  6. **Bracket visualization**: Custom simple implementation first, showing team names/members
+  7. **Team Formation**: Manual or automatic before bracket generation
+  8. **Multi-Human Support**: Allow any number of humans (0-10) via the "Human Players" section in the create-tournament modal; uses same `start_match_helper` / `eel.start_match` mechanism as main GUI
+  9. **Party Mode (allow_duplicates)**: When enabled, each unique participant becomes one team with all seats filled by copies of that participant — enables tournaments with fewer unique bots than seats
+  10. **Dynamic Humans**: The backend `get_tournament_bots()` returns only bots; the frontend builds the human participant list dynamically (count + usernames) and merges it with selected bots before calling `tournament_new()`
+  11. **LAN Match Workflow (Phase 3)**: For matches with humans, use a staging→real flow: (1) launch a no-bot staging match so the host can set up the LAN host and let humans join, (2) gate on a "Players Ready?" button, (3) launch the real match with `Existing Match Behaviour = Continue and Spawn` so bots inject into the existing lobby without tearing it down. See [LAN Match Workflow](#lan-match-workflow-multi-human-tournaments).
 
 ## Next Steps
 
-1. Begin implementation with Phase 1 (1v1 single elimination)
-2. Add team size support (2v2, 3v3, 4v4) in Phase 2
-3. Add round robin and double elimination in future iterations
+  1. ✅ Phase 1 (1v1 single elimination) — complete
+  2. ✅ Phase 2 team size support (2v2, 3v3, 4v4, 5v5) — complete
+  3. ✅ Phase 2 multi-human support — complete (dynamic human count + custom usernames)
+  4. ✅ Phase 2 double elimination + round robin — complete
+  5. ⬜ Phase 3 LAN match workflow: staging→real flow with "Players Ready?" gate for matches with humans
+  6. ⬜ Phase 3 polish: better bracket visualization (ref: [`rl_tournament_bracket.png`](rl_tournament_bracket.png)), templates, statistics, shareable files, team balance indicator UI
 
 ## Tournament Mutator Values Reference
 
@@ -488,15 +538,34 @@ During implementation, the following deviations from the original plan were made
 6. **Team Size Validation**: Added validation to ensure participant count is divisible by team size before forming teams
 
 ### Technical Improvements
-1. **Automatic Match Launching**: Matches now launch automatically when clicking on a bracket match (similar to story mode)
-2. **Automatic Winner Detection**: The backend automatically detects match results and records winners based on team scores
-3. **Improved Polling**: Frontend polls for match completion and updates the UI automatically
-4. **Team Slot Assignment**: Match launcher now correctly assigns team members to appropriate slot ranges (0-3 for team 0, 4-7 for team 1)
-5. **Team Name Support**: Added optional custom team names for better tournament presentation
+  1. **Automatic Match Launching**: Matches now launch automatically when clicking on a bracket match (similar to story mode)
+  2. **Automatic Winner Detection**: The backend automatically detects match results and records winners based on team scores
+  3. **Improved Polling**: Frontend polls for match completion and updates the UI automatically
+  4. **Team Slot Assignment**: Match launcher now correctly assigns team members to appropriate slot ranges (0-3 for team 0, 4-7 for team 1)
+  5. **Team Name Support**: Added optional custom team names for better tournament presentation
+
+### Multi-Human Support (Implemented)
+  Both the main GUI and tournament use the same `start_match_helper` / `eel.start_match` entry point ([`gui.py:62`](rlbot_gui/gui.py:62)), so no separate LAN plumbing is needed.
+
+  | Aspect | Main GUI | Tournament |
+  |--------|----------|------------|
+  | Team Building | Dynamic drag-and-drop to blue/orange teams | Pre-formed teams from team formation phase |
+  | Human Selection | Single human per team (HUMAN constant in main-vue.js) | **Dynamic count (0-10) + custom usernames** |
+  | Bot List Construction | [`startMatch()`](rlbot_gui/gui/js/main-vue.js:498-514) builds `blueBots` and `orangeBots` arrays | [`build_match_bot_list()`](rlbot_gui/tournament/team_manager.py:256-295) assigns team members to slots |
+  | Slot Assignment | Implicit via team array position | Explicit slot assignment (0-4 for team 0, 0-4 for team 1) |
+  | Multi-Human Support | Not implemented - only supports 1 human per team | **Implemented** — any number of humans, each a first-class participant |
+
+  **How it works**: The "Human Players" section in the create-tournament modal lets operators set a count (0-10) and enter a custom username for each human. These are built into participant objects (`participant_type: 'human'`) and merged with selected bots before calling `tournament_new()`. Team formation (random/seeded/party-mode) assigns humans to seats just like bots. `build_match_bot_list()` maps each participant to the correct team and slot, and `create_player_config()` in [`match_runner.py`](rlbot_gui/match_runner/match_runner.py:25-35) assigns each human a unique `human_index` via `IncrementingInteger` for proper input routing.
+
+### Party Mode / Allow Duplicates (Implemented)
+  When `allow_duplicates` is enabled, each unique participant becomes one team with all seats filled by copies of that participant. This enables tournaments with fewer unique bots than seats (e.g., 2 unique bots in a 5v5 tournament = 2 teams of 5 copies each). Validation only requires ≥ 2 participants instead of `team_size * 2`.
+
+### 5v5 Team Size (Implemented)
+  Rocket League has 5 kickoff spawns per side, so 5v5 is the maximum team size. `VALID_TEAM_SIZES = (1, 2, 3, 4, 5)` and `MAX_PARTICIPANTS_PER_TEAM = 5`. The `bot_list` for a 5v5 match has 10 entries (5 per team), and `create_player_config()` handles any number of players per team.
 
 ### Team Size Specific Considerations
-1. **Slot Mapping**: RLBot supports up to 8 participants per match (4 per team max)
-2. **Human Slot Assignment**: For multi-human teams, need to track which human plays which slot
-3. **Team Balance**: Consider implementing a simple "team strength" calculation based on bot difficulty ratings
-4. **Bye Handling**: Byes should be at team level, not participant level
-5. **Minimum Teams**: All team sizes support minimum 2 teams (4-32 participants depending on size)
+1. **Slot Mapping**: RLBot supports up to 10 participants per match (5 per team max)
+2. **Human Slot Assignment**: Humans are assigned to seats by team formation; `build_match_bot_list()` maps each to the correct team/slot; `create_player_config()` assigns unique `human_index` for input routing
+3. **Team Balance**: `team_balance_report()` computes a simple strength estimate (bots=1.0, humans=0.5); UI not yet wired
+4. **Bye Handling**: Byes are at team level, not participant level
+5. **Minimum Teams**: All team sizes support minimum 2 teams (4-10 participants depending on size)

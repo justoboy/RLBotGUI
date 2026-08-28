@@ -37,7 +37,7 @@ class Participant:
 
 @dataclass
 class Team:
-    """Represents a team in the tournament (1v1, 2v2, 3v3, or 4v4)"""
+    """Represents a team in the tournament (1v1, 2v2, 3v3, 4v4, or 5v5)"""
     team_id: str
     name: str  # Optional custom name (e.g., 'Team A')
     participants: List[Participant] = field(default_factory=list)
@@ -142,10 +142,12 @@ class TournamentState:
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     losers_bracket_matches: List[Match] = field(default_factory=list)  # For double elimination
     match_settings: Dict[str, Any] = field(default_factory=dict)  # Custom match settings/mutators
-    # Phase 2: team size support (1v1, 2v2, 3v3, 4v4)
-    team_size: int = 1  # 1, 2, 3, or 4 participants per team
+    # Phase 2: team size support (1v1, 2v2, 3v3, 4v4, 5v5)
+    team_size: int = 1  # 1, 2, 3, 4, or 5 participants per team
     teams: List[Team] = field(default_factory=list)  # Formed teams
     winner_team: Optional[Team] = None  # Winning team (when team_size > 1)
+    # Party-mode: allow the same bot to be duplicated within a team
+    allow_duplicates: bool = False  # When True, each team member is a copy of one participant
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -162,7 +164,8 @@ class TournamentState:
             'match_settings': self.match_settings,
             'team_size': self.team_size,
             'teams': [t.to_dict() for t in self.teams],
-            'winner_team': self.winner_team.to_dict() if self.winner_team else None
+            'winner_team': self.winner_team.to_dict() if self.winner_team else None,
+            'allow_duplicates': self.allow_duplicates
         }
     
     @staticmethod
@@ -175,7 +178,8 @@ class TournamentState:
             completed=data.get('completed', False),
             created_at=data.get('created_at', datetime.now().isoformat()),
             match_settings=data.get('match_settings', {}),
-            team_size=data.get('team_size', 1)
+            team_size=data.get('team_size', 1),
+            allow_duplicates=data.get('allow_duplicates', False)
         )
         for p_data in data.get('participants', []):
             state.participants.append(Participant.from_dict(p_data))

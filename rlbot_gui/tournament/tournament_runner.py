@@ -28,59 +28,8 @@ from rlbot_gui.tournament.team_manager import (
 CURRENT_TOURNAMENT: Optional[TournamentState] = None
 
 
-def generate_match_config_from_match(match: Match, tournament_format: str) -> Dict[str, Any]:
-    """
-    Generate match configuration for RLBot based on tournament match.
-    """
-    if match.participant1 is None or match.participant2 is None:
-        raise ValueError("Match must have two participants")
-    
-    # Build team configurations
-    blue_team = []
-    orange_team = []
-    
-    # Add participant 1 to blue team
-    if match.participant1.participant_type == 'human':
-        blue_team.append({
-            'name': match.participant1.name,
-            'team': 0,
-            'type': 'human'
-        })
-    else:
-        blue_team.append({
-            'name': match.participant1.name,
-            'team': 0,
-            'type': 'bot',
-            'path': match.participant1.bot_config.get('path', '') if match.participant1.bot_config else '',
-            'config_name': match.participant1.bot_config.get('config_name', '') if match.participant1.bot_config else ''
-        })
-    
-    # Add participant 2 to orange team
-    if match.participant2.participant_type == 'human':
-        orange_team.append({
-            'name': match.participant2.name,
-            'team': 1,
-            'type': 'human'
-        })
-    else:
-        orange_team.append({
-            'name': match.participant2.name,
-            'team': 1,
-            'type': 'bot',
-            'path': match.participant2.bot_config.get('path', '') if match.participant2.bot_config else '',
-            'config_name': match.participant2.bot_config.get('config_name', '') if match.participant2.bot_config else ''
-        })
-    
-    return {
-        'blue_team': blue_team,
-        'orange_team': orange_team,
-        'map': 'DFHStadium',  # Default map
-        'game_mode': 'soccer'
-    }
-
-
 @eel.expose
-def tournament_new(name: str, tournament_format: str, participants_json: str, match_settings_json: str = '{}', team_size: int = 1) -> str:
+def tournament_new(name: str, tournament_format: str, participants_json: str, match_settings_json: str = '{}', team_size: int = 1, allow_duplicates: bool = False) -> str:
     """
     Create a new tournament.
     
@@ -89,7 +38,8 @@ def tournament_new(name: str, tournament_format: str, participants_json: str, ma
         tournament_format: 'single_elimination', 'double_elimination', or 'round_robin'
         participants_json: JSON string of participant list
         match_settings_json: JSON string of match settings (optional)
-        team_size: Participants per team (1, 2, 3, or 4). Default 1 (1v1).
+        team_size: Participants per team (1, 2, 3, 4, or 5). Default 1 (1v1).
+        allow_duplicates: When True, each team member is a copy of one participant.
     
     Returns:
         JSON string of tournament state
@@ -103,12 +53,12 @@ def tournament_new(name: str, tournament_format: str, participants_json: str, ma
     match_settings = json.loads(match_settings_json) if match_settings_json else {}
     
     # Validate team size
-    if team_size not in (1, 2, 3, 4):
-        return json.dumps({'error': f'Team size must be 1, 2, 3, or 4 (got {team_size})'})
+    if team_size not in (1, 2, 3, 4, 5):
+        return json.dumps({'error': f'Team size must be 1, 2, 3, 4, or 5 (got {team_size})'})
     
     # Validate participant count for team formation
     if team_size > 1:
-        valid, error_msg = validate_team_formation(len(participants), team_size)
+        valid, error_msg = validate_team_formation(len(participants), team_size, allow_duplicates)
         if not valid:
             return json.dumps({'error': error_msg})
     
@@ -120,12 +70,13 @@ def tournament_new(name: str, tournament_format: str, participants_json: str, ma
         format=tournament_format,
         participants=participants,
         match_settings=match_settings,
-        team_size=team_size
+        team_size=team_size,
+        allow_duplicates=allow_duplicates
     )
     
     if team_size > 1:
         # Form teams (random assignment by default) and generate team bracket
-        teams = form_teams_random(participants, team_size)
+        teams = form_teams_random(participants, team_size, allow_duplicates=allow_duplicates)
         CURRENT_TOURNAMENT.teams = teams
         matches, losers_matches = generate_team_bracket(teams, tournament_format)
         CURRENT_TOURNAMENT.matches = matches
@@ -169,17 +120,18 @@ def tournament_form_teams(assignment_method: str = 'random', team_names_json: st
         return json.dumps({'error': 'Team formation only applies when team size > 1'})
 
     participants = CURRENT_TOURNAMENT.participants
-    valid, error_msg = validate_team_formation(len(participants), team_size)
+    allow_duplicates = CURRENT_TOURNAMENT.allow_duplicates
+    valid, error_msg = validate_team_formation(len(participants), team_size, allow_duplicates)
     if not valid:
         return json.dumps({'error': error_msg})
 
     if assignment_method == 'seeded':
-        teams = form_teams_seeded(participants, team_size)
+        teams = form_teams_seeded(participants, team_size, allow_duplicates=allow_duplicates)
     elif assignment_method == 'manual':
         # Manual assignment is done client-side via tournament_set_team_members
         return json.dumps({'error': 'Use tournament_set_team_members for manual assignment'})
     else:
-        teams = form_teams_random(participants, team_size)
+        teams = form_teams_random(participants, team_size, allow_duplicates=allow_duplicates)
 
     # Apply custom names if provided
     try:
@@ -255,6 +207,42 @@ def tournament_set_team_members(team_index: int, participants_json: str, team_na
     CURRENT_TOURNAMENT.teams[team_index].participants = members
     if team_name:
         CURRENT_TOURNAMENT.teams[team_index].name = team_name
+
+    return tournament_save_state()
+
+
+@eel.expose
+def tournament_reorder_team_member(team_index: int, from_slot: int, to_slot: int) -> str:
+    """
+    Reorder a member within a team (slot assignment).
+
+    The order of team.participants determines the in-game slot: index 0 is
+    slot 0, index 1 is slot 1, etc. (see build_match_bot_list). This lets
+    operators designate which human fills which seat.
+
+    Args:
+        team_index: 0-based index of the team
+        from_slot: Current index of the member to move
+        to_slot: Target index for the member
+
+    Returns:
+        JSON string of updated tournament state
+    """
+    global CURRENT_TOURNAMENT
+
+    if CURRENT_TOURNAMENT is None:
+        return json.dumps({'error': 'No tournament loaded'})
+
+    if team_index < 0 or team_index >= len(CURRENT_TOURNAMENT.teams):
+        return json.dumps({'error': f'Team index {team_index} out of range'})
+
+    team = CURRENT_TOURNAMENT.teams[team_index]
+    n = len(team.participants)
+    if from_slot < 0 or from_slot >= n or to_slot < 0 or to_slot >= n:
+        return json.dumps({'error': f'Slot index out of range (team has {n} members)'})
+
+    member = team.participants.pop(from_slot)
+    team.participants.insert(to_slot, member)
 
     return tournament_save_state()
 
@@ -785,7 +773,8 @@ def tournament_randomize_seeding() -> str:
     # Regenerate bracket
     if CURRENT_TOURNAMENT.team_size > 1:
         # Re-form teams randomly and regenerate the team bracket
-        teams = form_teams_random(shuffled, CURRENT_TOURNAMENT.team_size)
+        teams = form_teams_random(shuffled, CURRENT_TOURNAMENT.team_size,
+                                 allow_duplicates=CURRENT_TOURNAMENT.allow_duplicates)
         CURRENT_TOURNAMENT.teams = teams
         matches, losers_matches = generate_team_bracket(teams, CURRENT_TOURNAMENT.format)
         CURRENT_TOURNAMENT.matches = matches

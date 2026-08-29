@@ -1,0 +1,239 @@
+<!-- Create Tournament Modal -->
+<b-modal id="create-tournament-modal" v-model="showCreateModalDialog" title="Create Tournament" size="lg" hide-footer centered body-modal>
+    <b-form @submit.prevent="createTournament">
+        <b-form-group label="Tournament Name" label-for="tournament-name">
+            <b-form-input 
+                id="tournament-name" 
+                v-model="newTournament.name" 
+                placeholder="Enter tournament name"
+                required
+            ></b-form-input>
+        </b-form-group>
+
+        <b-form-group label="Format" label-for="tournament-format">
+            <b-form-select 
+                id="tournament-format" 
+                v-model="newTournament.format"
+            >
+                <b-form-select-option value="single_elimination">Single Elimination</b-form-select-option>
+                <b-form-select-option value="double_elimination">Double Elimination</b-form-select-option>
+                <b-form-select-option value="round_robin">Round Robin</b-form-select-option>
+            </b-form-select>
+        </b-form-group>
+
+        <b-form-group label="Team Size" label-for="tournament-team-size">
+            <b-form-radio-group
+                id="tournament-team-size"
+                v-model="newTournament.team_size"
+                buttons
+                button-variant="outline-primary"
+                size="sm"
+            >
+                <b-form-radio value="1" button-content="1v1"></b-form-radio>
+                <b-form-radio value="2" button-content="2v2"></b-form-radio>
+                <b-form-radio value="3" button-content="3v3"></b-form-radio>
+                <b-form-radio value="4" button-content="4v4"></b-form-radio>
+                <b-form-radio value="5" button-content="5v5"></b-form-radio>
+            </b-form-radio-group>
+            <div class="text-muted small mt-1">
+                <span v-if="newTournament.team_size > 1 && !newTournament.allow_duplicates">
+                    {{ newTournament.team_size }} players per team.
+                    Select a multiple of {{ newTournament.team_size }} participants
+                    (at least {{ newTournament.team_size * 2 }}).
+                    Teams are formed automatically.
+                </span>
+                <span v-else-if="newTournament.team_size > 1">
+                    Party mode: each selected participant fills an entire team
+                    (duplicated {{ newTournament.team_size }}x).
+                    Select at least 2 participants.
+                </span>
+                <span v-else>Individual players compete (no teams).</span>
+            </div>
+            <b-form-checkbox
+                v-if="newTournament.team_size > 1"
+                v-model="newTournament.allow_duplicates"
+                class="mt-2"
+            >
+                Allow duplicate bots (party mode)
+            </b-form-checkbox>
+            <div v-if="newTournament.team_size > 1 && newTournament.allow_duplicates" class="text-muted small mt-1">
+                The same bot can be duplicated within a team (e.g., Bot1+Bot1 vs Bot2+Bot2).
+            </div>
+        </b-form-group>
+
+        <!-- Mutator Settings -->
+        <div class="mutator-settings-section">
+            <h5>Match Settings (Optional)</h5>
+            <p class="text-muted small">Customize match settings. Leave as default for standard matches.</p>
+            
+            <div class="mutator-grid">
+                <mutator-field
+                    label="Match Length"
+                    :options="MUTATOR_OPTIONS.match_length"
+                    v-model="newTournament.mutators.match_length"
+                />
+                <mutator-field
+                    label="Max Score"
+                    :options="MUTATOR_OPTIONS.max_score"
+                    v-model="newTournament.mutators.max_score"
+                />
+                <mutator-field
+                    label="Overtime"
+                    :options="MUTATOR_OPTIONS.overtime"
+                    v-model="newTournament.mutators.overtime"
+                />
+                <mutator-field
+                    label="Series Length"
+                    :options="MUTATOR_OPTIONS.series_length"
+                    v-model="newTournament.mutators.series_length"
+                />
+                <mutator-field
+                    label="Game Speed"
+                    :options="MUTATOR_OPTIONS.game_speed"
+                    v-model="newTournament.mutators.game_speed"
+                />
+                <mutator-field
+                    label="Boost Amount"
+                    :options="MUTATOR_OPTIONS.boost_amount"
+                    v-model="newTournament.mutators.boost_amount"
+                />
+                <mutator-field
+                    label="Rumble"
+                    :options="MUTATOR_OPTIONS.rumble"
+                    v-model="newTournament.mutators.rumble"
+                />
+                <mutator-field
+                    label="Demolish"
+                    :options="MUTATOR_OPTIONS.demolish"
+                    v-model="newTournament.mutators.demolish"
+                />
+            </div>
+            
+            <b-button @click="resetMutatorsToDefault" variant="outline-secondary" size="sm" class="mt-2">
+                <b-icon icon="arrow-counterclockwise"></b-icon> Reset to Defaults
+            </b-button>
+        </div>
+
+        <b-form-group label="Select Participants from Pool" label-for="participant-pool">
+            <div class="participant-pool-selection">
+                <div class="bot-pool-wrapper">
+                    <bot-card
+                        v-for="bot in botPool"
+                        :key="bot.participant_id || bot.path"
+                        :bot="bot"
+                        :draggable="false"
+                        class="tournament-bot-card"
+                        :class="{ 'selected': isParticipantSelected(bot) }"
+                        @click="toggleParticipantSelection(bot)"
+                    />
+                </div>
+            </div>
+        </b-form-group>
+
+        <!-- Human Players section -->
+        <b-form-group label="Human Players" label-for="human-count">
+            <div class="human-players-section">
+                <div class="human-count-row">
+                    <label class="mr-2">Count:</label>
+                    <b-form-input
+                        id="human-count"
+                        type="number"
+                        min="0"
+                        max="10"
+                        size="sm"
+                        style="width: 80px;"
+                        :value="newTournament.human_count"
+                        @input="setHumanCount($event.target.value)"
+                    ></b-form-input>
+                    <small class="text-muted ml-2">
+                        Human players are added to the participant pool automatically.
+                    </small>
+                </div>
+                <div v-if="newTournament.human_count > 0" class="human-names-list mt-2">
+                    <div v-for="(name, idx) in newTournament.human_names" :key="'hn_' + idx" class="human-name-row">
+                        <span class="human-name-label">Player {{ idx + 1 }}:</span>
+                        <b-form-input
+                            type="text"
+                            size="sm"
+                            style="width: 200px;"
+                            :placeholder="'Human ' + (idx + 1)"
+                            :value="name"
+                            @input="setHumanName(idx, $event.target.value)"
+                        ></b-form-input>
+                    </div>
+                </div>
+            </div>
+        </b-form-group>
+
+        <div class="selected-participants">
+            <h5>Selected ({{ totalParticipants }})</h5>
+            <div class="selected-list">
+                <b-badge 
+                    v-for="p in selectedParticipants" 
+                    :key="p.participant_id"
+                    variant="primary"
+                    class="m-1"
+                >
+                    {{ p.name }}
+                    <b-icon icon="x-circle" @click="toggleParticipantSelection(p)" style="cursor: pointer; margin-left: 5px;"></b-icon>
+                </b-badge>
+                <b-badge 
+                    v-for="h in humanParticipants" 
+                    :key="h.participant_id"
+                    variant="info"
+                    class="m-1"
+                >
+                    {{ h.name }}
+                    <b-icon icon="person" style="margin-left: 5px;"></b-icon>
+                </b-badge>
+            </div>
+        </div>
+
+        <div class="modal-footer mt-3">
+            <b-button @click="$bvModal.hide('create-tournament-modal')" variant="secondary">Cancel</b-button>
+            <b-button
+                @click="createTournament"
+                variant="success"
+                :disabled="!canCreateTournament"
+            >
+                Generate Bracket
+            </b-button>
+            <div v-if="!canCreateTournament" class="text-danger small mt-1">
+                {{ createBlockReason }}
+            </div>
+        </div>
+    </b-form>
+</b-modal>
+
+<!-- Match Result Modal -->
+<b-modal id="match-result-modal" title="Match Result" centered hide-footer body-modal>
+    <div v-if="currentMatch">
+        <h4>{{ currentMatch.participant1?.name }} vs {{ currentMatch.participant2?.name }}</h4>
+        
+        <div class="match-result-options">
+            <b-button 
+                @click="recordWinner(currentMatch.participant1.name, 1, 0)" 
+                variant="success"
+                size="lg"
+                class="m-2"
+            >
+                {{ currentMatch.participant1.name }} Wins
+            </b-button>
+            <b-button 
+                @click="recordWinner(currentMatch.participant2.name, 0, 1)" 
+                variant="success"
+                size="lg"
+                class="m-2"
+            >
+                {{ currentMatch.participant2.name }} Wins
+            </b-button>
+        </div>
+
+        <b-alert show variant="info">
+            Match has ended. Click the winner to record the result.
+        </b-alert>
+    </div>
+    <div class="modal-footer">
+        <b-button @click="currentMatch = null; $bvModal.hide('match-result-modal')" variant="secondary">Cancel</b-button>
+    </div>
+</b-modal>

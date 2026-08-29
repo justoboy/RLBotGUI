@@ -1,0 +1,75 @@
+<!-- Round Robin View (inlined into the main tournament component scope; carries v-else) -->
+<div class="round-robin-view noscroll-flex" v-else>
+    <div class="round-robin-header">
+        <h4>Round Robin Standings</h4>
+    </div>
+
+    <!-- Matches List -->
+    <div class="round-robin-matches">
+        <h5>Matches</h5>
+        <div class="matches-list">
+            <div v-for="match in tournamentState.matches" :key="match.match_id"
+                 class="round-robin-match"
+                 :class="{ 'completed': match.completed, 'active': isMatchActive(match), 'in-progress': isMatchInProgress(match) }"
+                 @click="onMatchClick(match)">
+                <div class="match-info">
+                    <span class="match-id">{{ match.match_id }}</span>
+                    <span class="match-pair">
+                        {{ match.participant1?.name || 'Waiting' }} vs {{ match.participant2?.name || 'Waiting' }}
+                    </span>
+                </div>
+                <div class="match-result" v-if="match.completed">
+                    <span class="match-score">{{ match.score?.[0] }} - {{ match.score?.[1] }}</span>
+                    <b-icon icon="check-circle-fill" variant="success"></b-icon>
+                </div>
+                <div class="match-status" v-else-if="isMatchInProgress(match)">
+                    <b-icon icon="hourglass-split" variant="info"></b-icon> In Progress
+                </div>
+                <div class="match-status" v-else>
+                    <span>Pending</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Standings Table -->
+    <div class="round-robin-standings">
+        <h5>Standings</h5>
+        <table class="standings-table">
+            <thead>
+                <tr>
+                    <th>Rank</th>
+                    <th>Participant</th>
+                    <th>Played</th>
+                    <th>Wins</th>
+                    <th>Draws</th>
+                    <th>Losses</th>
+                    <th>Goals For</th>
+                    <th>Goals Against</th>
+                    <th>Goal Difference</th>
+                    <th>Points</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr v-for="(standing, index) in standings" :key="standing.participant.team_id || standing.participant.participant_id">
+                    <td>{{ index + 1 }}</td>
+                    <td class="participant-name">
+                        <span v-if="standing.participant.team_id">
+                            {{ standing.participant.name }}
+                            <small class="standings-team-members">({{ standing.participant.participants.map(p => p.name).join(', ') }})</small>
+                        </span>
+                        <span v-else>{{ standing.participant.name }}</span>
+                    </td>
+                    <td>{{ standing.played }}</td>
+                    <td>{{ standing.wins }}</td>
+                    <td>{{ standing.draws }}</td>
+                    <td>{{ standing.losses }}</td>
+                    <td>{{ standing.goals_for }}</td>
+                    <td>{{ standing.goals_against }}</td>
+                    <td>{{ standing.goal_difference }}</td>
+                    <td class="points">{{ standing.points }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>

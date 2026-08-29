@@ -181,7 +181,21 @@ def setup_match(
         do_setup()
 
 
-def start_match_helper(bot_list: List[dict], match_settings: dict, launcher_prefs: RocketLeagueLauncherPreference):
+def start_match_helper(bot_list: List[dict], match_settings: dict, launcher_prefs: RocketLeagueLauncherPreference, wait_for_completion: bool = True):
+    """
+    Launch a match and optionally wait for it to complete.
+
+    Args:
+        bot_list: List of bot/human config dicts.
+        match_settings: Match settings dict.
+        launcher_prefs: Rocket League launcher preferences.
+        wait_for_completion: When True (default), block until the match ends
+            and return team scores. When False, launch the match and return
+            immediately (used for staging matches that idle in the lobby).
+
+    Returns:
+        List of team score dicts on completion, or None if wait_for_completion is False.
+    """
     print(bot_list)
     print(match_settings)
 
@@ -230,7 +244,12 @@ def start_match_helper(bot_list: List[dict], match_settings: dict, launcher_pref
     # Note that we are not calling infinite_loop because that is not compatible with the way eel works!
     # Instead we will reproduce the important behavior from infinite_loop inside this file.
     eel.matchStarted()
-    
+
+    # If we don't need to wait for completion (staging match), return immediately
+    if not wait_for_completion:
+        print("start_match_helper: wait_for_completion=False, returning immediately (staging match)")
+        return None
+
     # Poll for match end and collect final results
     try:
         from rlbot.utils.structures.game_data_struct import GameTickPacket

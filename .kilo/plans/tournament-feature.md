@@ -348,13 +348,16 @@ rlbot_gui/
    - ✅ **Human slot assignment** — humans are participants like bots; team formation assigns them to seats; `build_match_bot_list()` maps each to the correct team/slot
    - **Note**: Both main GUI and tournament use the same `start_match_helper` / `eel.start_match` entry point ([`gui.py:62`](rlbot_gui/gui.py:62)), so no separate LAN plumbing is needed. The `bot_list` passed to `start_match_helper` correctly reflects the chosen human count, and team slot indices align with the game's expected player ordering.
 
-3. **Phase 3: Polish / Enhanced Features** — ⬜ NOT STARTED
-   - **LAN Match Workflow (multi-human tournaments)** — see [LAN Match Workflow](#lan-match-workflow-multi-human-tournaments) below
-   - Better bracket visualization — reference image: [`rl_tournament_bracket.png`](rl_tournament_bracket.png) (shows how brackets render in the base Rocket League game)
-   - Tournament templates
-   - Statistics tracking
-   - Shareable tournament files
-   - Team balance indicators (basic `team_balance_report()` exists; UI not wired)
+ 3. **Phase 3: Polish / Enhanced Features** — 🚧 IN PROGRESS
+    - ✅ **LAN Match Workflow (multi-human tournaments)** — staging→real flow with "Players Ready?" gate (see [LAN Match Workflow](#lan-match-workflow-multi-human-tournaments) below)
+      - ✅ Backend: `match_has_humans()` / `count_humans_in_match()` helpers, `tournament_start_match(use_staging)`, `tournament_match_has_humans()`, `tournament_confirm_players_ready()` (launches real match with `Continue And Spawn`), `tournament_cancel_staging()`
+      - ✅ `start_match_helper(..., wait_for_completion=False)` for the non-blocking staging lobby
+      - ✅ Frontend: staging banner + "Players Ready — Start Match" gate, confirm/cancel, shared `startMatchPolling()` helper
+    - ✅ **Better bracket visualization** — winner highlighting in match cards + CSS connector lines between rounds + emphasized final round (reference image [`rl_tournament_bracket.png`](rl_tournament_bracket.png) not present in repo; implemented a clean bracket look instead)
+    - ✅ **Tournament templates** — `tournament_save_template()` / `tournament_get_templates()` / `tournament_delete_template()`; "Save as Template" button + landing-page template list with "Use" to pre-fill the create modal
+    - ✅ **Statistics tracking** — `tournament_get_statistics()` (per-participant/team W-L-D, GF/GA/GD, win %, totals) + statistics panel in the active tournament view
+    - ✅ **Shareable tournament files** — import/export already implemented in Phase 1 (`tournament_export_to_json` / `tournament_import_from_json` / `tournament_save_file_dialog`)
+    - ✅ **Team balance indicators** — `tournament_team_balance()` now wired to a balance badge in the team panel (spread + balanced/unbalanced status)
 
 ## LAN Match Workflow (Multi-Human Tournaments)
 
@@ -412,8 +415,8 @@ When a match contains **one or more human participants**, do **not** launch the 
   2. ✅ Phase 2 team size support (2v2, 3v3, 4v4, 5v5) — complete
   3. ✅ Phase 2 multi-human support — complete (dynamic human count + custom usernames)
   4. ✅ Phase 2 double elimination + round robin — complete
-  5. ⬜ Phase 3 LAN match workflow: staging→real flow with "Players Ready?" gate for matches with humans
-  6. ⬜ Phase 3 polish: better bracket visualization (ref: [`rl_tournament_bracket.png`](rl_tournament_bracket.png)), templates, statistics, shareable files, team balance indicator UI
+ 5. ✅ Phase 3 LAN match workflow: staging→real flow with "Players Ready?" gate for matches with humans
+ 6. ✅ Phase 3 polish: better bracket visualization, templates, statistics, shareable files, team balance indicator UI
 
 ## Tournament Mutator Values Reference
 

@@ -1,6 +1,8 @@
-import BotCard from './bot-card-vue.js'
+﻿import BotCard from './bot-card-vue.js'
 import BotPool from './bot-pool-vue.js'
 import MutatorField from './mutator-field-vue.js'
+import { buildTournamentTemplate } from './tournament-templates/loader.js'
+
 
 // Default mutator settings
 const DEFAULT_MUTATORS = {
@@ -44,562 +46,7 @@ const MUTATOR_OPTIONS = {
 
 export default {
     name: 'tournament',
-    template: /*html*/`
-    <div class="tournament-page noscroll-flex flex-grow-1">
-        <!-- Landing Page - Show when no tournament is active -->
-        <div v-if="!tournamentState" class="tournament-landing noscroll-flex flex-grow-1">
-            <div class="tournament-landing-content">
-                <div class="landing-header">
-                    <h2>Tournament Mode</h2>
-                    <b-button @click="returnToHome" variant="secondary">
-                        <b-icon icon="arrow-left"></b-icon> Back to Main
-                    </b-button>
-                </div>
-                
-                <p class="landing-description">Create a tournament bracket, add participants, and run matches!</p>
-                
-                <div class="saved-tournaments">
-                    <h4 v-if="savedTournaments.length > 0">Saved Tournaments</h4>
-                    <div v-if="savedTournaments.length === 0" class="no-saved-tournaments">
-                        <p>No saved tournaments found.</p>
-                    </div>
-                    <div v-else class="saved-tournaments-list">
-                        <div
-                            v-for="tournament in savedTournaments"
-                            :key="tournament.tournament_id"
-                            class="saved-tournament-card"
-                            @click="loadSavedTournament(tournament)"
-                        >
-                            <div class="tournament-info-card">
-                                <h5>{{ tournament.name }}</h5>
-                                <span class="tournament-format-badge">{{ formatLabelFromData(tournament.format) }}</span>
-                                <span class="tournament-participants">{{ tournament.participants?.length || 0 }} participants</span>
-                                <span v-if="tournament.completed" class="tournament-completed">
-                                    <b-icon icon="trophy-fill" variant="warning"></b-icon> Completed
-                                </span>
-                                <span v-else class="tournament-in-progress">In Progress</span>
-                            </div>
-                            <div class="tournament-actions-card">
-                                <b-button @click.stop="loadSavedTournament(tournament)" variant="primary" size="sm">
-                                    Load
-                                </b-button>
-                                <b-button @click.stop="deleteSavedTournament(tournament.tournament_id)" variant="danger" size="sm">
-                                    <b-icon icon="trash"></b-icon>
-                                </b-button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="create-new-section">
-                    <b-button @click="showCreateModal" variant="success" size="lg">
-                        <b-icon icon="plus-circle"></b-icon> Create New Tournament
-                    </b-button>
-                </div>
-                
-                <!-- Import/Export Section -->
-                <div class="import-export-section mt-3">
-                    <b-button @click="triggerImportFilePicker" variant="secondary" size="sm" class="mr-2">
-                        <b-icon icon="upload"></b-icon> Import Tournament
-                    </b-button>
-                    <b-button @click="exportTournament" variant="secondary" size="sm" v-if="tournamentState">
-                        <b-icon icon="download"></b-icon> Export Tournament
-                    </b-button>
-                </div>
-
-                <!-- Hidden file input for importing tournament JSON files -->
-                <input type="file" ref="importFileInput" accept=".json,application/json" style="display:none" @change="handleImportFileSelected">
-            </div>
-        </div>
-
-        <!-- Tournament Active -->
-        <div v-else class="tournament-active noscroll-flex flex-grow-1">
-            <!-- Tournament Header -->
-            <div class="tournament-header">
-                <div class="tournament-info">
-                    <h3>{{ tournamentState.name }}</h3>
-                    <span class="tournament-format">{{ formatLabel }}</span>
-                    <span class="tournament-status" v-if="tournamentState.completed">
-                        <b-icon icon="trophy-fill" variant="warning"></b-icon>
-                        Winner: {{ winnerDisplayName }}
-                    </span>
-                    <span class="tournament-status" v-else>
-                        {{ getCurrentRoundName() }}
-                    </span>
-                </div>
-                <div class="tournament-actions">
-                    <b-button @click="returnToLanding" variant="secondary">
-                        <b-icon icon="arrow-left"></b-icon> Back
-                    </b-button>
-                    <b-button @click="saveTournament" variant="info" v-if="!matchInProgress">
-                        <b-icon :icon="isSaving ? 'check-circle-fill' : 'save'"></b-icon>
-                        {{ isSaving ? 'Saved!' : 'Save' }}
-                    </b-button>
-                    <b-button @click="exportTournament" variant="secondary" v-if="!matchInProgress">
-                        <b-icon icon="download"></b-icon> Export
-                    </b-button>
-                    <b-button @click="showMatchCompleteModal" variant="success" v-if="matchInProgress">
-                        <b-icon icon="check-circle"></b-icon> Match Complete
-                    </b-button>
-                </div>
-            </div>
-
-            <!-- Tournament Content -->
-            <div class="tournament-content noscroll-flex">
-                <!-- Team Panel (Phase 2: team_size > 1) -->
-                <div class="team-panel" v-if="tournamentState.team_size > 1 && tournamentState.teams && tournamentState.teams.length > 0">
-                    <div class="team-panel-header">
-                        <h5>Teams ({{ tournamentState.team_size }}v{{ tournamentState.team_size }})</h5>
-                        <b-button @click="reformTeams" variant="outline-primary" size="sm" v-if="!tournamentState.completed">
-                            <b-icon icon="shuffle"></b-icon> Re-form Teams
-                        </b-button>
-                    </div>
-                    <div class="team-grid">
-                        <div v-for="(team, index) in tournamentState.teams" :key="team.team_id" class="team-card">
-                            <div class="team-card-name">
-                                {{ team.name }}
-                                <span class="team-record">{{ team.wins }}W - {{ team.losses }}L</span>
-                            </div>
-                            <div class="team-card-members">
-                                <div v-for="(p, slot) in team.participants" :key="slot" class="team-card-member">
-                                    <span class="team-member-slot">S{{ slot + 1 }}</span>
-                                    <b-icon :icon="p.participant_type === 'human' ? 'person' : 'robot'" font-scale="0.8"></b-icon>
-                                    <span class="team-member-name">{{ p.name }}</span>
-                                    <span class="team-member-reorder">
-                                        <b-icon icon="arrow-up" font-scale="0.7" class="reorder-btn"
-                                                :class="{ 'disabled': slot === 0 }"
-                                                @click="reorderTeamMember(index, slot, slot - 1)"></b-icon>
-                                        <b-icon icon="arrow-down" font-scale="0.7" class="reorder-btn"
-                                                :class="{ 'disabled': slot === team.participants.length - 1 }"
-                                                @click="reorderTeamMember(index, slot, slot + 1)"></b-icon>
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="team-panel-hint text-muted small">
-                        <b-icon icon="info-circle" font-scale="0.8"></b-icon>
-                        Slot order determines the in-game seat (S1 = slot 1). Use the arrows to assign which human fills which seat.
-                    </div>
-                </div>
-
-                <!-- Bracket View for Single/Double Elimination -->
-                <div class="bracket-view noscroll-flex" v-if="tournamentState.format !== 'round_robin'">
-                    <div class="bracket-header">
-                        <h4>{{ formatLabel }} Bracket</h4>
-                        <b-button @click="randomizeSeeding" variant="outline-primary" size="sm" v-if="!tournamentState.completed">
-                            <b-icon icon="shuffle"></b-icon> Randomize Seeding
-                        </b-button>
-                    </div>
-                    
-                    <div class="bracket-tree noscroll-flex">
-                        <!-- Winners Bracket -->
-                        <div class="bracket-section">
-                            <h5 class="section-title">Winners Bracket</h5>
-                            <div v-for="(roundMatches, roundIndex) in matchesByRound" :key="roundIndex" class="bracket-round">
-                                <h6 class="round-title">{{ getRoundName(roundMatches[0]?.round_num, roundMatches) }}</h6>
-                                <div class="bracket-round-matches">
-                                    <div v-for="match in roundMatches" :key="match.match_id" 
-                                         class="bracket-match" 
-                                         :class="{ 'completed': match.completed, 'active': isMatchActive(match), 'in-progress': isMatchInProgress(match) }"
-                                         @click="onMatchClick(match)">
-                                        <div class="match-header">
-                                            <span class="match-id">{{ match.match_id }}</span>
-                                            <span v-if="match.completed" class="match-result">
-                                                <b-icon icon="check-circle-fill" variant="success"></b-icon>
-                                            </span>
-                                            <span v-else-if="isMatchInProgress(match)" class="match-in-progress">
-                                                <b-icon icon="hourglass-split" variant="info"></b-icon> In Progress
-                                            </span>
-                                        </div>
-                                        <div class="match-players">
-                                            <span v-if="match.participant1">{{ match.participant1.name }}</span>
-                                            <span v-else class="placeholder">Waiting...</span>
-                                            <span class="match-vs-inline">vs</span>
-                                            <span v-if="match.participant2">{{ match.participant2.name }}</span>
-                                            <span v-else class="placeholder">Waiting...</span>
-                                        </div>
-                                        <!-- Team members (Phase 2) -->
-                                        <div v-if="match.team1 && match.team2" class="match-team-members">
-                                            <div class="team-member-list">
-                                                <span v-for="p in match.team1.participants" :key="'t1-' + p.participant_id" class="team-member">{{ p.name }}</span>
-                                            </div>
-                                            <div class="team-member-list">
-                                                <span v-for="p in match.team2.participants" :key="'t2-' + p.participant_id" class="team-member">{{ p.name }}</span>
-                                            </div>
-                                        </div>
-                                        <div v-if="match.score" class="match-score">
-                                            {{ match.score[0] }} - {{ match.score[1] }}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Losers Bracket for Double Elimination -->
-                        <div class="bracket-section" v-if="tournamentState.format === 'double_elimination' && losersBracketMatches.length > 0">
-                            <h5 class="section-title">Losers Bracket</h5>
-                            <div v-for="(roundMatches, roundIndex) in losersBracketMatchesByRound" :key="'lb-' + roundIndex" class="bracket-round">
-                                <h6 class="round-title">Losers Round {{ roundIndex + 1 }}</h6>
-                                <div class="bracket-round-matches">
-                                    <div v-for="match in roundMatches" :key="match.match_id" 
-                                         class="bracket-match losers-match"
-                                         :class="{ 'completed': match.completed, 'active': isMatchActive(match), 'in-progress': isMatchInProgress(match) }"
-                                         @click="onMatchClick(match)">
-                                        <div class="match-header">
-                                            <span class="match-id">{{ match.match_id }}</span>
-                                            <span v-if="match.completed" class="match-result">
-                                                <b-icon icon="check-circle-fill" variant="success"></b-icon>
-                                            </span>
-                                            <span v-else-if="isMatchInProgress(match)" class="match-in-progress">
-                                                <b-icon icon="hourglass-split" variant="info"></b-icon> In Progress
-                                            </span>
-                                        </div>
-                                        <div class="match-players">
-                                            <span v-if="match.participant1">{{ match.participant1.name }}</span>
-                                            <span v-else class="placeholder">Waiting...</span>
-                                            <span class="match-vs-inline">vs</span>
-                                            <span v-if="match.participant2">{{ match.participant2.name }}</span>
-                                            <span v-else class="placeholder">Waiting...</span>
-                                        </div>
-                                        <!-- Team members (Phase 2) -->
-                                        <div v-if="match.team1 && match.team2" class="match-team-members">
-                                            <div class="team-member-list">
-                                                <span v-for="p in match.team1.participants" :key="'lt1-' + p.participant_id" class="team-member">{{ p.name }}</span>
-                                            </div>
-                                            <div class="team-member-list">
-                                                <span v-for="p in match.team2.participants" :key="'lt2-' + p.participant_id" class="team-member">{{ p.name }}</span>
-                                            </div>
-                                        </div>
-                                        <div v-if="match.score" class="match-score">
-                                            {{ match.score[0] }} - {{ match.score[1] }}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Round Robin View -->
-                <div class="round-robin-view noscroll-flex" v-else>
-                    <div class="round-robin-header">
-                        <h4>Round Robin Standings</h4>
-                    </div>
-                    
-                    <!-- Matches List -->
-                    <div class="round-robin-matches">
-                        <h5>Matches</h5>
-                        <div class="matches-list">
-                            <div v-for="match in tournamentState.matches" :key="match.match_id" 
-                                 class="round-robin-match"
-                                 :class="{ 'completed': match.completed, 'active': isMatchActive(match), 'in-progress': isMatchInProgress(match) }"
-                                 @click="onMatchClick(match)">
-                                <div class="match-info">
-                                    <span class="match-id">{{ match.match_id }}</span>
-                                    <span class="match-pair">
-                                        {{ match.participant1?.name || 'Waiting' }} vs {{ match.participant2?.name || 'Waiting' }}
-                                    </span>
-                                </div>
-                                <div class="match-result" v-if="match.completed">
-                                    <span class="match-score">{{ match.score?.[0] }} - {{ match.score?.[1] }}</span>
-                                    <b-icon icon="check-circle-fill" variant="success"></b-icon>
-                                </div>
-                                <div class="match-status" v-else-if="isMatchInProgress(match)">
-                                    <b-icon icon="hourglass-split" variant="info"></b-icon> In Progress
-                                </div>
-                                <div class="match-status" v-else>
-                                    <span>Pending</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Standings Table -->
-                    <div class="round-robin-standings">
-                        <h5>Standings</h5>
-                        <table class="standings-table">
-                            <thead>
-                                <tr>
-                                    <th>Rank</th>
-                                    <th>Participant</th>
-                                    <th>Played</th>
-                                    <th>Wins</th>
-                                    <th>Draws</th>
-                                    <th>Losses</th>
-                                    <th>Goals For</th>
-                                    <th>Goals Against</th>
-                                    <th>Goal Difference</th>
-                                    <th>Points</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr v-for="(standing, index) in standings" :key="standing.participant.team_id || standing.participant.participant_id">
-                                    <td>{{ index + 1 }}</td>
-                                    <td class="participant-name">
-                                        <span v-if="standing.participant.team_id">
-                                            {{ standing.participant.name }}
-                                            <small class="standings-team-members">({{ standing.participant.participants.map(p => p.name).join(', ') }})</small>
-                                        </span>
-                                        <span v-else>{{ standing.participant.name }}</span>
-                                    </td>
-                                    <td>{{ standing.played }}</td>
-                                    <td>{{ standing.wins }}</td>
-                                    <td>{{ standing.draws }}</td>
-                                    <td>{{ standing.losses }}</td>
-                                    <td>{{ standing.goals_for }}</td>
-                                    <td>{{ standing.goals_against }}</td>
-                                    <td>{{ standing.goal_difference }}</td>
-                                    <td class="points">{{ standing.points }}</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Create Tournament Modal -->
-        <b-modal id="create-tournament-modal" title="Create Tournament" size="lg" hide-footer centered>
-            <b-form @submit.prevent="createTournament">
-                <b-form-group label="Tournament Name" label-for="tournament-name">
-                    <b-form-input 
-                        id="tournament-name" 
-                        v-model="newTournament.name" 
-                        placeholder="Enter tournament name"
-                        required
-                    ></b-form-input>
-                </b-form-group>
-
-                <b-form-group label="Format" label-for="tournament-format">
-                    <b-form-select 
-                        id="tournament-format" 
-                        v-model="newTournament.format"
-                    >
-                        <b-form-select-option value="single_elimination">Single Elimination</b-form-select-option>
-                        <b-form-select-option value="double_elimination">Double Elimination</b-form-select-option>
-                        <b-form-select-option value="round_robin">Round Robin</b-form-select-option>
-                    </b-form-select>
-                </b-form-group>
-
-                <b-form-group label="Team Size" label-for="tournament-team-size">
-                    <b-form-radio-group
-                        id="tournament-team-size"
-                        v-model="newTournament.team_size"
-                        buttons
-                        button-variant="outline-primary"
-                        size="sm"
-                    >
-                        <b-form-radio value="1" button-content="1v1"></b-form-radio>
-                        <b-form-radio value="2" button-content="2v2"></b-form-radio>
-                        <b-form-radio value="3" button-content="3v3"></b-form-radio>
-                        <b-form-radio value="4" button-content="4v4"></b-form-radio>
-                        <b-form-radio value="5" button-content="5v5"></b-form-radio>
-                    </b-form-radio-group>
-                    <div class="text-muted small mt-1">
-                        <span v-if="newTournament.team_size > 1 && !newTournament.allow_duplicates">
-                            {{ newTournament.team_size }} players per team.
-                            Select a multiple of {{ newTournament.team_size }} participants
-                            (at least {{ newTournament.team_size * 2 }}).
-                            Teams are formed automatically.
-                        </span>
-                        <span v-else-if="newTournament.team_size > 1">
-                            Party mode: each selected participant fills an entire team
-                            (duplicated {{ newTournament.team_size }}x).
-                            Select at least 2 participants.
-                        </span>
-                        <span v-else>Individual players compete (no teams).</span>
-                    </div>
-                    <b-form-checkbox
-                        v-if="newTournament.team_size > 1"
-                        v-model="newTournament.allow_duplicates"
-                        class="mt-2"
-                    >
-                        Allow duplicate bots (party mode)
-                    </b-form-checkbox>
-                    <div v-if="newTournament.team_size > 1 && newTournament.allow_duplicates" class="text-muted small mt-1">
-                        The same bot can be duplicated within a team (e.g., Bot1+Bot1 vs Bot2+Bot2).
-                    </div>
-                </b-form-group>
-
-                <!-- Mutator Settings -->
-                <div class="mutator-settings-section">
-                    <h5>Match Settings (Optional)</h5>
-                    <p class="text-muted small">Customize match settings. Leave as default for standard matches.</p>
-                    
-                    <div class="mutator-grid">
-                        <mutator-field
-                            label="Match Length"
-                            :options="MUTATOR_OPTIONS.match_length"
-                            v-model="newTournament.mutators.match_length"
-                        />
-                        <mutator-field
-                            label="Max Score"
-                            :options="MUTATOR_OPTIONS.max_score"
-                            v-model="newTournament.mutators.max_score"
-                        />
-                        <mutator-field
-                            label="Overtime"
-                            :options="MUTATOR_OPTIONS.overtime"
-                            v-model="newTournament.mutators.overtime"
-                        />
-                        <mutator-field
-                            label="Series Length"
-                            :options="MUTATOR_OPTIONS.series_length"
-                            v-model="newTournament.mutators.series_length"
-                        />
-                        <mutator-field
-                            label="Game Speed"
-                            :options="MUTATOR_OPTIONS.game_speed"
-                            v-model="newTournament.mutators.game_speed"
-                        />
-                        <mutator-field
-                            label="Boost Amount"
-                            :options="MUTATOR_OPTIONS.boost_amount"
-                            v-model="newTournament.mutators.boost_amount"
-                        />
-                        <mutator-field
-                            label="Rumble"
-                            :options="MUTATOR_OPTIONS.rumble"
-                            v-model="newTournament.mutators.rumble"
-                        />
-                        <mutator-field
-                            label="Demolish"
-                            :options="MUTATOR_OPTIONS.demolish"
-                            v-model="newTournament.mutators.demolish"
-                        />
-                    </div>
-                    
-                    <b-button @click="resetMutatorsToDefault" variant="outline-secondary" size="sm" class="mt-2">
-                        <b-icon icon="arrow-counterclockwise"></b-icon> Reset to Defaults
-                    </b-button>
-                </div>
-
-                <b-form-group label="Select Participants from Pool" label-for="participant-pool">
-                    <div class="participant-pool-selection">
-                        <div class="bot-pool-wrapper">
-                            <bot-card
-                                v-for="bot in botPool"
-                                :key="bot.participant_id || bot.path"
-                                :bot="bot"
-                                :draggable="false"
-                                class="tournament-bot-card"
-                                :class="{ 'selected': isParticipantSelected(bot) }"
-                                @click="toggleParticipantSelection(bot)"
-                            />
-                        </div>
-                    </div>
-                </b-form-group>
-
-                <!-- Human Players section -->
-                <b-form-group label="Human Players" label-for="human-count">
-                    <div class="human-players-section">
-                        <div class="human-count-row">
-                            <label class="mr-2">Count:</label>
-                            <b-form-input
-                                id="human-count"
-                                type="number"
-                                min="0"
-                                max="10"
-                                size="sm"
-                                style="width: 80px;"
-                                :value="newTournament.human_count"
-                                @input="setHumanCount($event.target.value)"
-                            ></b-form-input>
-                            <small class="text-muted ml-2">
-                                Human players are added to the participant pool automatically.
-                            </small>
-                        </div>
-                        <div v-if="newTournament.human_count > 0" class="human-names-list mt-2">
-                            <div v-for="(name, idx) in newTournament.human_names" :key="'hn_' + idx" class="human-name-row">
-                                <span class="human-name-label">Player {{ idx + 1 }}:</span>
-                                <b-form-input
-                                    type="text"
-                                    size="sm"
-                                    style="width: 200px;"
-                                    :placeholder="'Human ' + (idx + 1)"
-                                    :value="name"
-                                    @input="setHumanName(idx, $event.target.value)"
-                                ></b-form-input>
-                            </div>
-                        </div>
-                    </div>
-                </b-form-group>
-
-                <div class="selected-participants">
-                    <h5>Selected ({{ totalParticipants }})</h5>
-                    <div class="selected-list">
-                        <b-badge 
-                            v-for="p in selectedParticipants" 
-                            :key="p.participant_id"
-                            variant="primary"
-                            class="m-1"
-                        >
-                            {{ p.name }}
-                            <b-icon icon="x-circle" @click="toggleParticipantSelection(p)" style="cursor: pointer; margin-left: 5px;"></b-icon>
-                        </b-badge>
-                        <b-badge 
-                            v-for="h in humanParticipants" 
-                            :key="h.participant_id"
-                            variant="info"
-                            class="m-1"
-                        >
-                            {{ h.name }}
-                            <b-icon icon="person" style="margin-left: 5px;"></b-icon>
-                        </b-badge>
-                    </div>
-                </div>
-
-                <div class="modal-footer mt-3">
-                    <b-button @click="$bvModal.hide('create-tournament-modal')" variant="secondary">Cancel</b-button>
-                    <b-button
-                        @click="createTournament"
-                        variant="success"
-                        :disabled="!canCreateTournament"
-                    >
-                        Generate Bracket
-                    </b-button>
-                    <div v-if="!canCreateTournament" class="text-danger small mt-1">
-                        {{ createBlockReason }}
-                    </div>
-                </div>
-            </b-form>
-        </b-modal>
-
-        <!-- Match Result Modal -->
-        <b-modal id="match-result-modal" title="Match Result" centered hide-footer>
-            <div v-if="currentMatch">
-                <h4>{{ currentMatch.participant1?.name }} vs {{ currentMatch.participant2?.name }}</h4>
-                
-                <div class="match-result-options">
-                    <b-button 
-                        @click="recordWinner(currentMatch.participant1.name, 1, 0)" 
-                        variant="success"
-                        size="lg"
-                        class="m-2"
-                    >
-                        {{ currentMatch.participant1.name }} Wins
-                    </b-button>
-                    <b-button 
-                        @click="recordWinner(currentMatch.participant2.name, 0, 1)" 
-                        variant="success"
-                        size="lg"
-                        class="m-2"
-                    >
-                        {{ currentMatch.participant2.name }} Wins
-                    </b-button>
-                </div>
-
-                <b-alert show variant="info">
-                    Match has ended. Click the winner to record the result.
-                </b-alert>
-            </div>
-            <div class="modal-footer">
-                <b-button @click="currentMatch = null; $bvModal.hide('match-result-modal')" variant="secondary">Cancel</b-button>
-            </div>
-        </b-modal>
-    </div>
-    `,
+    template: buildTournamentTemplate(),
     components: {
         'bot-card': BotCard,
         'bot-pool': BotPool,
@@ -624,6 +71,17 @@ export default {
             savedTournaments: [],
             isSaving: false,
             MUTATOR_OPTIONS: MUTATOR_OPTIONS,
+            // Phase 3: LAN Match Workflow (staging -> Players Ready -> real match)
+            stagingMatchId: null,       // match_id currently in the staging phase
+            stagingHumanCount: 0,       // number of humans in the staging match
+            showCreateModalDialog: false, // v-model fallback for create tournament modal
+            // Phase 3: Team balance indicator
+            teamBalance: null,          // {balanced, spread, strengths}
+            // Phase 3: Tournament templates
+            templates: [],
+            templateName: '',
+            // Phase 3: Statistics
+            statsData: null,
         };
     },
     computed: {
@@ -742,6 +200,65 @@ export default {
             
             return Object.values(rounds);
         },
+        // Butterfly layout: split each round into a left wing and a right wing,
+        // with the final round (1 match) in the center.
+        // Left wing: rounds 1..n-1 in ascending order (outer â†’ inner).
+        // Right wing: rounds n-1..1 in descending order (inner â†’ outer).
+        butterflyRounds() {
+            if (!this.tournamentState || !this.tournamentState.matches) {
+                return { left: [], center: null, right: [] };
+            }
+            
+            const rounds = {};
+            for (const match of this.tournamentState.matches) {
+                if (!rounds[match.round_num]) rounds[match.round_num] = [];
+                rounds[match.round_num].push(match);
+            }
+            const roundNums = Object.keys(rounds).map(Number).sort((a, b) => a - b);
+            
+            const left = [];
+            const right = [];
+            let center = null;
+            
+            for (const rn of roundNums) {
+                const matches = rounds[rn];
+                if (matches.length === 1) {
+                    // Final round goes in the center
+                    center = { roundNum: rn, matches, isCenter: true };
+                } else {
+                    // Split into left and right wings
+                    const half = Math.ceil(matches.length / 2);
+                    left.push({ roundNum: rn, matches: matches.slice(0, half) });
+                    right.push({ roundNum: rn, matches: matches.slice(half) });
+                }
+            }
+            
+            // Right wing is displayed in reverse order (finals â†’ round 1)
+            right.reverse();
+            
+            return { left, center, right };
+        },
+        // Butterfly bracket positions: returns { match_id: topPercent } for each match.
+        // Each wing's round 1 is spread evenly across the full height; every later
+        // round is placed at the midpoint of the matches that feed into it.
+        wbMatchPositions() {
+            if (!this.tournamentState || !this.tournamentState.matches) return {};
+            const { left, center, right } = this.butterflyRounds;
+            const positions = {};
+            for (const wing of [left, right]) {
+                // Flatten all matches in this wing and compute positions
+                const wingMatches = wing.flatMap(round => round.matches);
+                Object.assign(positions, this.computeBracketPositions(wingMatches));
+            }
+            if (center) {
+                positions[center.matches[0].match_id] = 50;
+            }
+            return positions;
+        },
+        lbMatchPositions() {
+            if (!this.tournamentState || !this.losersBracketMatches) return {};
+            return this.computeBracketPositions(this.losersBracketMatches);
+        },
         standings() {
             if (!this.tournamentState || this.tournamentState.format !== 'round_robin') return [];
 
@@ -838,6 +355,145 @@ export default {
         }
     },
     methods: {
+        // ------------------------------------------------------------------
+        // Butterfly bracket layout + SVG connectors
+        // ------------------------------------------------------------------
+
+        // Compute vertical positions (as % of the round column height) for a
+        // list of matches. Round 1 is spread evenly across the full height;
+        // every later match is placed at the midpoint of the matches that feed
+        // into it (via next_match_id). This makes the bracket converge toward
+        // the center, producing the classic butterfly shape.
+        computeBracketPositions(matches) {
+            const positions = {};
+            if (!matches || matches.length === 0) return positions;
+
+            const byId = {};
+            for (const m of matches) byId[m.match_id] = m;
+
+            // Group by round number, sorted ascending.
+            const roundNums = [...new Set(matches.map(m => m.round_num))].sort((a, b) => a - b);
+            const byRound = {};
+            for (const rn of roundNums) {
+                byRound[rn] = matches.filter(m => m.round_num === rn);
+            }
+
+            // Round 1: spread evenly across the full height.
+            const first = byRound[roundNums[0]];
+            const n = first.length;
+            for (let i = 0; i < n; i++) {
+                positions[first[i].match_id] = ((i + 0.5) / n) * 100;
+            }
+
+            // Later rounds: midpoint of feeders (matches whose next_match_id points here).
+            for (let r = 1; r < roundNums.length; r++) {
+                const roundMatches = byRound[roundNums[r]];
+                for (const m of roundMatches) {
+                    const feeders = matches.filter(f => f.next_match_id === m.match_id);
+                    if (feeders.length > 0) {
+                        const sum = feeders.reduce((acc, f) => acc + (positions[f.match_id] != null ? positions[f.match_id] : 50), 0);
+                        positions[m.match_id] = sum / feeders.length;
+                    } else {
+                        // No feeder info (e.g. losers bracket entry) - center it.
+                        positions[m.match_id] = 50;
+                    }
+                }
+            }
+            return positions;
+        },
+
+        // Draw SVG connector lines between rounds (butterfly bracket style).
+        // Each bracket section has its own SVG overlay inside .bracket-rounds
+        // (the scroll container), so the SVG scrolls naturally with the content.
+        drawBracketConnectors() {
+            this.$nextTick(() => {
+                // Winners bracket connectors
+                const wbSvg = this.$refs.wbConnectorSvg;
+                const wbSection = this.$refs.wb_section;
+                const wbScrollContainer = wbSection && wbSection.querySelector('.bracket-rounds');
+                if (wbSvg && wbScrollContainer && this.tournamentState && this.tournamentState.matches) {
+                    this.drawSectionConnectors(wbSvg, wbScrollContainer, this.tournamentState.matches, 'rgba(0, 217, 255, 0.55)');
+                }
+
+                // Losers bracket connectors (double elimination)
+                const lbSvg = this.$refs.lbConnectorSvg;
+                const lbSection = this.$refs.lb_section;
+                const lbScrollContainer = lbSection && lbSection.querySelector('.bracket-rounds');
+                if (lbSvg && lbScrollContainer && this.tournamentState && this.tournamentState.losers_bracket_matches) {
+                    this.drawSectionConnectors(lbSvg, lbScrollContainer, this.tournamentState.losers_bracket_matches, 'rgba(255, 193, 7, 0.5)');
+                }
+            });
+        },
+
+        // Draw elbow connectors inside a single bracket section.
+        // The SVG is absolutely positioned inside the scroll container (.bracket-rounds),
+        // so it scrolls naturally with the content. Coordinates are relative to
+        // the scroll container's top-left corner.
+        drawSectionConnectors(svg, scrollContainer, matches, stroke) {
+            // Size the SVG to the scroll container's content area
+            const w = Math.max(scrollContainer.scrollWidth, scrollContainer.clientWidth);
+            const h = Math.max(scrollContainer.scrollHeight, scrollContainer.clientHeight);
+            svg.setAttribute('width', w);
+            svg.setAttribute('height', h);
+            svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+            svg.style.left = '0';
+            svg.style.top = '0';
+
+            while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+            const byId = {};
+            for (const m of matches) byId[m.match_id] = m;
+
+            // Origin of the scroll container in viewport coords (accounts for scroll)
+            const originX = scrollContainer.getBoundingClientRect().left;
+            const originY = scrollContainer.getBoundingClientRect().top;
+
+            for (const m of matches) {
+                if (!m.next_match_id) continue;
+                const target = byId[m.next_match_id];
+                if (!target) continue;
+
+                const srcEl = this.$el.querySelector(`[data-match-id="${m.match_id}"]`);
+                const dstEl = this.$el.querySelector(`[data-match-id="${target.match_id}"]`);
+                if (!srcEl || !dstEl) continue;
+
+                const s = srcEl.getBoundingClientRect();
+                const d = dstEl.getBoundingClientRect();
+
+                // Determine flow direction
+                const srcCenterX = s.left + s.width / 2;
+                const dstCenterX = d.left + d.width / 2;
+                const srcIsLeft = srcCenterX < dstCenterX;
+
+                const gap = 4;
+
+                // Coordinates relative to the section's top-left
+                const x1 = srcIsLeft ? s.right - originX + gap : s.left - originX - gap;
+                const y1 = s.top + s.height / 2 - originY;
+                const x2 = srcIsLeft ? d.left - originX - gap : d.right - originX + gap;
+                const y2 = d.top + d.height / 2 - originY;
+
+                // Elbow: horizontal out, vertical to target height, horizontal in
+                const midX = x1 + (x2 - x1) / 2;
+                this.appendSvgLine(svg, x1, y1, midX, y1, stroke);
+                this.appendSvgLine(svg, midX, y1, midX, y2, stroke);
+                this.appendSvgLine(svg, midX, y2, x2, y2, stroke);
+            }
+        },
+
+        // Append a single <line> element to the SVG overlay.
+        appendSvgLine(svg, x1, y1, x2, y2, stroke) {
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', x1.toFixed(1));
+            line.setAttribute('y1', y1.toFixed(1));
+            line.setAttribute('x2', x2.toFixed(1));
+            line.setAttribute('y2', y2.toFixed(1));
+            line.setAttribute('stroke', stroke);
+            line.setAttribute('stroke-width', '2');
+            line.setAttribute('stroke-linecap', 'round');
+            svg.appendChild(line);
+        },
+
         getRoundName(roundNum, roundMatches) {
             if (!roundNum || !roundMatches) return `Round ${roundNum || 1}`;
             
@@ -891,16 +547,33 @@ export default {
             return this.getRoundName(lastRound, matchesByRoundNum[lastRound]);
         },
         async showCreateModal() {
-            await this.loadBotPool();
-            this.$bvModal.show('create-tournament-modal');
+            // Force a tick to ensure the modal is rendered
+            await this.$nextTick();
+            
+            try {
+                await this.loadBotPool();
+            } catch (error) {
+                console.error('Error loading bot pool:', error);
+            }
+            
+            // Try both methods
+            this.showCreateModalDialog = true;
+            this.$nextTick(() => {
+                this.$bvModal.show('create-tournament-modal');
+            });
         },
         
         async loadBotPool() {
-            // Load bots from the backend pool. Humans are NOT in this pool —
+            // Load bots from the backend pool. Humans are NOT in this pool â€”
             // they are configured separately in the "Human Players" section
             // (dynamic count + custom usernames) and merged in at create time.
             if (eel.get_tournament_bots) {
-                this.botPool = await eel.get_tournament_bots()();
+                try {
+                    this.botPool = await eel.get_tournament_bots()();
+                } catch (err) {
+                    console.error('Error calling eel.get_tournament_bots:', err);
+                    this.botPool = [];
+                }
             } else {
                 this.botPool = [];
             }
@@ -930,9 +603,11 @@ export default {
         },
 
         async createTournament() {
+            console.log('[Tournament] createTournament called');
             const teamSize = Number(this.newTournament.team_size) || 1;
             const allowDuplicates = teamSize > 1 && !!this.newTournament.allow_duplicates;
             const total = this.totalParticipants;
+            console.log('[Tournament] teamSize:', teamSize, 'totalParticipants:', total);
             if (allowDuplicates) {
                 if (total < 2) {
                     alert('Please select at least 2 participants (one per team) for party mode');
@@ -963,8 +638,10 @@ export default {
 
             // Combine selected bots + dynamic humans into the full participant list
             const allParticipants = [...this.selectedParticipants, ...this.humanParticipants];
+            console.log('[Tournament] Participants to create:', allParticipants.length);
 
             try {
+                console.log('[Tournament] Calling eel.tournament_new...');
                 const result = await eel.tournament_new(
                     this.newTournament.name,
                     this.newTournament.format,
@@ -974,17 +651,25 @@ export default {
                     allowDuplicates
                 )();
 
+                console.log('[Tournament] tournament_new returned:', result.substring(0, 200));
                 const state = JSON.parse(result);
                 if (state.error) {
                     alert('Error creating tournament: ' + state.error);
                     return;
                 }
+                console.log('[Tournament] Setting tournamentState:', state.name, state.tournament_id);
+                console.log('[Tournament] Before: tournamentState was', this.tournamentState ? 'set' : 'null');
                 this.tournamentState = state;
+                console.log('[Tournament] After: tournamentState is', this.tournamentState ? 'set' : 'null');
                 this.selectedParticipants = [];
                 this.newTournament = { name: '', format: 'single_elimination', team_size: 1, allow_duplicates: false, human_count: 0, human_names: [], mutators: { ...DEFAULT_MUTATORS } };
-                this.$bvModal.hide('create-tournament-modal');
+                this.refreshTeamBalance();
+                this.refreshStats();
+                this.showCreateModalDialog = false;
+                console.log('[Tournament] Modal closed, calling loadSavedTournaments...');
+                this.loadSavedTournaments();
             } catch (error) {
-                console.error('Error creating tournament:', error);
+                console.error('[Tournament] Error creating tournament:', error);
                 alert('Error creating tournament: ' + error);
             }
         },
@@ -994,6 +679,8 @@ export default {
                 const result = await eel.tournament_load()();
                 if (result) {
                     this.tournamentState = JSON.parse(result);
+                    this.refreshTeamBalance();
+                    this.refreshStats();
                 }
             } catch (error) {
                 console.error('Error loading tournament:', error);
@@ -1128,64 +815,52 @@ export default {
         async onMatchClick(match) {
             if (match.completed) return;
             if (!match.participant1 || !match.participant2) return;
-            
+
+            // Phase 3: LAN Match Workflow.
+            // If the match has humans, ask whether to use the staging flow
+            // (recommended) or start immediately (legacy behavior).
+            let useStaging = false;
+            if (eel.tournament_match_has_humans) {
+                try {
+                    const info = JSON.parse(await eel.tournament_match_has_humans(match.match_id)());
+                    if (info.has_humans) {
+                        const choice = confirm(
+                            `This match has ${info.human_count} human player(s).\n\n` +
+                            `RECOMMENDED: Open a staging lobby first so the host can set up the LAN host and let humans join, then start the real match with bots injected (no lobby teardown).\n\n` +
+                            `OK = Use staging flow\nCancel = Start immediately (host must pause quickly to set up LAN)`
+                        );
+                        useStaging = choice;
+                    }
+                } catch (e) {
+                    console.warn('Could not check for humans, proceeding without staging:', e);
+                }
+            }
+
             // Start the match - it will launch automatically and record the winner
             try {
-                const result = await eel.tournament_start_match(match.match_id)();
+                const result = await eel.tournament_start_match(match.match_id, useStaging)();
                 const response = JSON.parse(result);
-              
+
                 if (response.error) {
                     alert(response.error);
                     return;
                 }
-              
+
+                // Phase 3: If we launched a staging lobby, show the "Players Ready?" gate
+                // and do NOT start polling for match completion yet.
+                if (response.staging) {
+                    this.stagingMatchId = match.match_id;
+                    this.stagingHumanCount = response.human_count || 0;
+                    this.currentMatch = match;
+                    return;
+                }
+
                 // Match is launching - show in progress indicator
                 this.matchInProgress = match.match_id;
                 this.currentMatch = match;
-                
+
                 // Poll for tournament state update (match completion)
-                const pollInterval = setInterval(async () => {
-                    try {
-                        // Fetch fresh state from backend on each poll
-                        const freshState = await eel.tournament_get_state()();
-                        if (!freshState) {
-                            console.log('Polling: No state returned');
-                            return;
-                        }
-                        
-                        const currentState = JSON.parse(freshState);
-                        
-                        // Check both matches and losers_bracket_matches
-                        let updatedMatch = null;
-                        if (currentState.matches && Array.isArray(currentState.matches)) {
-                            updatedMatch = currentState.matches.find(m => m.match_id === match.match_id);
-                        }
-                        if (!updatedMatch && currentState.losers_bracket_matches && Array.isArray(currentState.losers_bracket_matches)) {
-                            updatedMatch = currentState.losers_bracket_matches.find(m => m.match_id === match.match_id);
-                        }
-
-                        if (updatedMatch && updatedMatch.completed) {
-                            // Match completed - update the tournament state
-                            this.tournamentState = currentState;
-                            this.matchInProgress = null;
-                            this.currentMatch = null;
-                            clearInterval(pollInterval);
-                            console.log('Match completed, tournament completed:', currentState.completed);
-
-                            // Check if tournament is complete - just update state, no alert needed
-                            if (currentState.completed) {
-                                console.log('Tournament Complete! Winner:', currentState.winner.name);
-                            }
-                        }
-                    } catch (e) {
-                        console.log('Polling error:', e);
-                    }
-                }, 1000);
-                
-                // Stop polling after 5 minutes
-                setTimeout(() => {
-                    clearInterval(pollInterval);
-                }, 300000);
+                this.startMatchPolling(match.match_id);
             } catch (error) {
                 console.error('Error starting match:', error);
                 alert('Error starting match: ' + error);
@@ -1205,6 +880,8 @@ export default {
                 this.tournamentState = JSON.parse(result);
                 this.currentMatch = null;
                 this.matchInProgress = null;
+                this.refreshTeamBalance();
+                this.refreshStats();
                 this.$bvModal.hide('match-result-modal');
                 
                 if (this.tournamentState.completed) {
@@ -1240,31 +917,46 @@ export default {
         },
         
         loadSavedTournaments() {
+            console.log('[Tournament] loadSavedTournaments called');
             // Load list of saved tournaments from backend
             try {
                 if (eel.tournament_get_saved_list) {
                     const saved = eel.tournament_get_saved_list()();
                     saved.then(result => {
-                        this.savedTournaments = JSON.parse(result);
+                        const parsed = JSON.parse(result);
+                        console.log('[Tournament] Saved tournaments loaded:', parsed.length, 'items');
+                        this.savedTournaments = parsed;
                     });
+                } else {
+                    console.error('[Tournament] eel.tournament_get_saved_list is not defined');
                 }
             } catch (error) {
-                console.error('Error loading saved tournaments:', error);
+                console.error('[Tournament] Error loading saved tournaments:', error);
                 this.savedTournaments = [];
             }
         },
         
         loadSavedTournament(tournament) {
+            console.log('[Tournament] loadSavedTournament called for:', tournament.name, tournament.tournament_id);
             // Load the tournament from backend by ID
             if (eel.tournament_load_from_id) {
                 eel.tournament_load_from_id(tournament.tournament_id)().then(result => {
+                    console.log('[Tournament] load_from_id returned:', result.substring(0, 200));
                     const state = JSON.parse(result);
                     if (state.error) {
+                        console.error('[Tournament] Error from backend:', state.error);
                         alert('Error loading tournament: ' + state.error);
                     } else {
+                        console.log('[Tournament] Setting tournamentState from loadSavedTournament:', state.name);
+                        console.log('[Tournament] Before: tournamentState was', this.tournamentState ? this.tournamentState.name : 'null');
                         this.tournamentState = state;
+                        console.log('[Tournament] After: tournamentState is', this.tournamentState ? this.tournamentState.name : 'null');
+                        this.refreshTeamBalance();
+                        this.refreshStats();
                     }
                 });
+            } else {
+                console.error('[Tournament] eel.tournament_load_from_id is not defined');
             }
         },
         
@@ -1359,21 +1051,210 @@ export default {
                 }
                 
                 this.tournamentState = data;
+                this.refreshTeamBalance();
+                this.refreshStats();
                 alert('Tournament imported successfully!');
             } catch (error) {
                 console.error('Error importing tournament:', error);
                 alert('Invalid JSON format: ' + error);
+            }
+        },
+
+        // ------------------------------------------------------------------
+        // Phase 3: LAN Match Workflow (staging -> Players Ready -> real match)
+        // ------------------------------------------------------------------
+        async confirmPlayersReady() {
+            if (!this.stagingMatchId) return;
+            const matchId = this.stagingMatchId;
+            this.stagingMatchId = null;
+            try {
+                const result = await eel.tournament_confirm_players_ready(matchId)();
+                const response = JSON.parse(result);
+                if (response.error) {
+                    alert('Error starting real match: ' + response.error);
+                    return;
+                }
+                // Real match is now launching - poll for completion.
+                this.matchInProgress = matchId;
+                this.startMatchPolling(matchId);
+            } catch (error) {
+                console.error('Error confirming players ready:', error);
+                alert('Error confirming players ready: ' + error);
+            }
+        },
+
+        async cancelStaging() {
+            if (!this.stagingMatchId) return;
+            const matchId = this.stagingMatchId;
+            this.stagingMatchId = null;
+            try {
+                await eel.tournament_cancel_staging(matchId)();
+            } catch (error) {
+                console.warn('Error cancelling staging:', error);
+            }
+        },
+
+        // Shared polling helper used by both the direct and staging flows.
+        startMatchPolling(matchId) {
+            const pollInterval = setInterval(async () => {
+                try {
+                    const freshState = await eel.tournament_get_state()();
+                    if (!freshState) return;
+                    const currentState = JSON.parse(freshState);
+                    let updatedMatch = null;
+                    if (currentState.matches && Array.isArray(currentState.matches)) {
+                        updatedMatch = currentState.matches.find(m => m.match_id === matchId);
+                    }
+                    if (!updatedMatch && currentState.losers_bracket_matches && Array.isArray(currentState.losers_bracket_matches)) {
+                        updatedMatch = currentState.losers_bracket_matches.find(m => m.match_id === matchId);
+                    }
+                    if (updatedMatch && updatedMatch.completed) {
+                        this.tournamentState = currentState;
+                        this.matchInProgress = null;
+                        this.currentMatch = null;
+                        clearInterval(pollInterval);
+                        this.refreshTeamBalance();
+                        this.refreshStats();
+                    }
+                } catch (e) {
+                    console.log('Polling error:', e);
+                }
+            }, 1000);
+            setTimeout(() => { clearInterval(pollInterval); }, 300000);
+        },
+
+        // ------------------------------------------------------------------
+        // Phase 3: Team balance indicator
+        // ------------------------------------------------------------------
+        async refreshTeamBalance() {
+            if (!this.tournamentState || this.tournamentState.team_size <= 1) {
+                this.teamBalance = null;
+                return;
+            }
+            try {
+                const result = await eel.tournament_team_balance()();
+                const data = JSON.parse(result);
+                this.teamBalance = data.error ? null : data;
+            } catch (e) {
+                this.teamBalance = null;
+            }
+        },
+
+        // ------------------------------------------------------------------
+        // Phase 3: Statistics tracking
+        // ------------------------------------------------------------------
+        async refreshStats() {
+            if (!this.tournamentState) {
+                this.statsData = null;
+                return;
+            }
+            try {
+                const result = await eel.tournament_get_statistics()();
+                const data = JSON.parse(result);
+                this.statsData = data.error ? null : data;
+            } catch (e) {
+                this.statsData = null;
+            }
+        },
+
+        // ------------------------------------------------------------------
+        // Phase 3: Tournament templates
+        // ------------------------------------------------------------------
+        loadTemplates() {
+            if (eel.tournament_get_templates) {
+                eel.tournament_get_templates()().then(result => {
+                    this.templates = JSON.parse(result);
+                });
+            }
+        },
+
+        async saveAsTemplate() {
+            if (!this.tournamentState) return;
+            const name = prompt('Template name:', this.tournamentState.name + ' (template)');
+            if (!name || !name.trim()) return;
+            const config = {
+                format: this.tournamentState.format,
+                team_size: this.tournamentState.team_size,
+                allow_duplicates: !!this.tournamentState.allow_duplicates,
+                mutators: this.tournamentState.match_settings || {},
+                human_count: 0,
+                human_names: []
+            };
+            try {
+                const result = await eel.tournament_save_template(name.trim(), JSON.stringify(config))();
+                const data = JSON.parse(result);
+                if (data.error) {
+                    alert('Error saving template: ' + data.error);
+                    return;
+                }
+                this.loadTemplates();
+                alert('Template saved: ' + name.trim());
+            } catch (error) {
+                console.error('Error saving template:', error);
+                alert('Error saving template: ' + error);
+            }
+        },
+
+        applyTemplate(tpl) {
+            // Pre-fill the create-tournament modal from the template config.
+            const cfg = tpl.config || {};
+            this.newTournament.format = cfg.format || 'single_elimination';
+            this.newTournament.team_size = cfg.team_size || 1;
+            this.newTournament.allow_duplicates = !!cfg.allow_duplicates;
+            this.newTournament.mutators = { ...DEFAULT_MUTATORS, ...(cfg.mutators || {}) };
+            this.newTournament.human_count = cfg.human_count || 0;
+            this.newTournament.human_names = cfg.human_names || [];
+            this.newTournament.name = '';
+            this.showCreateModal();
+        },
+
+        async deleteTemplate(templateId) {
+            if (!confirm('Delete this template?')) return;
+            try {
+                await eel.tournament_delete_template(templateId)();
+                this.loadTemplates();
+            } catch (error) {
+                console.error('Error deleting template:', error);
             }
         }
     },
     created() {
         // Load saved tournaments list
         this.loadSavedTournaments();
+        // Phase 3: Load tournament templates
+        this.loadTemplates();
         // Load existing tournament if available
         this.loadTournament();
     },
     
     mounted() {
-        // No callbacks needed - match completion is detected via polling
+        console.log('[Tournament] mounted() called');
+        console.log('[Tournament] this.tournamentState =', this.tournamentState ? this.tournamentState.name : 'null');
+        console.log('[Tournament] this.$el =', this.$el ? this.$el.outerHTML.substring(0, 200) : 'null');
+        // Draw bracket connectors after initial render
+        this.$nextTick(() => {
+            this.drawBracketConnectors();
+        });
+        // Redraw connectors when the window resizes
+        this._bracketResizeHandler = () => this.drawBracketConnectors();
+        window.addEventListener('resize', this._bracketResizeHandler);
+    },
+    beforeDestroy() {
+        if (this._bracketResizeHandler) {
+            window.removeEventListener('resize', this._bracketResizeHandler);
+            this._bracketResizeHandler = null;
+        }
+    },
+    watch: {
+        // Watch for tournament state changes and redraw connectors
+        tournamentState: {
+            handler(newVal, oldVal) {
+                console.log('[Tournament] tournamentState changed: old=', oldVal ? oldVal.name : 'null', 'new=', newVal ? newVal.name : 'null');
+                this.$nextTick(() => {
+                    this.drawBracketConnectors();
+                });
+            },
+            deep: true
+        }
     }
 };

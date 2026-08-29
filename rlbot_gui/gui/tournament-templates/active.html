@@ -1,0 +1,171 @@
+<!-- Tournament Active View - Shown when a tournament is active -->
+<div class="tournament-active noscroll-flex flex-grow-1" v-else>
+    <!-- Tournament Header -->
+    <div class="tournament-header">
+        <div class="tournament-info">
+            <h3>{{ tournamentState.name }}</h3>
+            <span class="tournament-format">{{ formatLabel }}</span>
+            <span class="tournament-status" v-if="tournamentState.completed">
+                <b-icon icon="trophy-fill" variant="warning"></b-icon> Winner: {{ winnerDisplayName }}
+            </span>
+            <span class="tournament-status" v-else>
+                {{ getCurrentRoundName() }}
+            </span>
+        </div>
+        <div class="tournament-actions">
+            <b-button @click="returnToLanding" variant="secondary">
+                <b-icon icon="arrow-left"></b-icon> Back
+            </b-button>
+            <b-button @click="saveTournament" variant="info" v-if="!matchInProgress">
+                <b-icon :icon="isSaving ? 'check-circle-fill' : 'save'"></b-icon>
+                {{ isSaving ? 'Saved!' : 'Save' }}
+            </b-button>
+            <b-button @click="exportTournament" variant="secondary" v-if="!matchInProgress">
+                <b-icon icon="download"></b-icon> Export
+            </b-button>
+            <b-button @click="saveAsTemplate" variant="outline-secondary" v-if="!matchInProgress">
+                <b-icon icon="bookmark"></b-icon> Save as Template
+            </b-button>
+            <b-button @click="showMatchCompleteModal" variant="success" v-if="matchInProgress">
+                <b-icon icon="check-circle"></b-icon> Match Complete
+            </b-button>
+        </div>
+    </div>
+
+    <!-- LAN Match Workflow staging banner -->
+    <div class="lan-staging-banner" v-if="stagingMatchId">
+        <b-icon icon="wifi" font-scale="1.2" variant="info"></b-icon>
+        <div class="lan-staging-text">
+            <strong>Staging lobby open</strong> — {{ stagingHumanCount }} human(s) expected.
+            <span class="text-muted">
+                Host: press <b>Home</b> → <b>Host</b> in Rocket Plugin to open the port.
+                Each human: press <b>Home</b> → <b>Join</b> (their IP is saved).
+            </span>
+        </div>
+        <div class="lan-staging-actions">
+            <b-button @click="confirmPlayersReady" variant="success" size="sm">
+                <b-icon icon="check-circle"></b-icon> Players Ready — Start Match
+            </b-button>
+            <b-button @click="cancelStaging" variant="secondary" size="sm">
+                Cancel
+            </b-button>
+        </div>
+    </div>
+
+    <!-- Tournament Content -->
+    <div class="tournament-content noscroll-flex">
+        <!-- Team Panel (shown when team_size > 1) -->
+        <div class="team-panel" v-if="tournamentState.team_size > 1 && tournamentState.teams && tournamentState.teams.length > 0">
+            <div class="team-panel-header">
+                <h5>Teams ({{ tournamentState.team_size }}v{{ tournamentState.team_size }})</h5>
+                <b-button @click="reformTeams" variant="outline-primary" size="sm" v-if="!tournamentState.completed">
+                    <b-icon icon="shuffle"></b-icon> Re-form Teams
+                </b-button>
+            </div>
+            <!-- Team balance indicator -->
+            <div class="team-balance-indicator" v-if="teamBalance">
+                <b-badge :variant="teamBalance.balanced ? 'success' : 'warning'">
+                    <b-icon :icon="teamBalance.balanced ? 'check-circle' : 'exclamation-triangle'"></b-icon>
+                    {{ teamBalance.balanced ? 'Teams are balanced' : 'Teams are unbalanced' }}
+                </b-badge>
+                <span class="text-muted small ml-2">
+                    Strength spread: {{ teamBalance.spread.toFixed(1) }}
+                </span>
+                <b-button v-b-tooltip.hover title="Per-team strength (bots=1.0, humans=0.5)"
+                          variant="link" size="sm" class="ml-2 p-0">
+                    <b-icon icon="info-circle"></b-icon>
+                </b-button>
+            </div>
+            <div class="team-grid">
+                <div v-for="(team, index) in tournamentState.teams" :key="team.team_id" class="team-card">
+                    <div class="team-card-name">
+                        {{ team.name }}
+                        <span class="team-record">{{ team.wins }}W - {{ team.losses }}L</span>
+                    </div>
+                    <div class="team-card-members">
+                        <div v-for="(p, slot) in team.participants" :key="slot" class="team-card-member">
+                            <span class="team-member-slot">S{{ slot + 1 }}</span>
+                            <b-icon :icon="p.participant_type === 'human' ? 'person' : 'robot'" font-scale="0.8"></b-icon>
+                            <span class="team-member-name">{{ p.name }}</span>
+                            <span class="team-member-reorder">
+                                <b-icon icon="arrow-up" font-scale="0.7" class="reorder-btn"
+                                        :class="{ 'disabled': slot === 0 }"
+                                        @click="reorderTeamMember(index, slot, slot - 1)"></b-icon>
+                                <b-icon icon="arrow-down" font-scale="0.7" class="reorder-btn"
+                                        :class="{ 'disabled': slot === team.participants.length - 1 }"
+                                        @click="reorderTeamMember(index, slot, slot + 1)"></b-icon>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="team-panel-hint text-muted small">
+                <b-icon icon="info-circle" font-scale="0.8"></b-icon>
+                Slot order determines the in-game seat (S1 = slot 1). Use the arrows to assign which human fills which seat.
+            </div>
+        </div>
+
+        <!-- Bracket View for Single/Double Elimination -->
+        <div class="bracket-view noscroll-flex" v-if="tournamentState.format !== 'round_robin'">
+            <div class="bracket-header">
+                <h4>{{ formatLabel }} Bracket</h4>
+                <b-button @click="randomizeSeeding" variant="outline-primary" size="sm" v-if="!tournamentState.completed">
+                    <b-icon icon="shuffle"></b-icon> Randomize Seeding
+                </b-button>
+            </div>
+            <!-- Bracket tree is inlined from bracket-view.html -->
+            {{BRACKET_VIEW}}
+        </div>
+
+        <!-- Round Robin View (inlined from round-robin.html, carries v-else) -->
+        {{ROUND_ROBIN}}
+
+        <!-- Statistics panel -->
+        <div class="stats-panel" v-if="statsData && statsData.completed_matches > 0">
+            <div class="stats-panel-header">
+                <h5>
+                    <b-icon icon="bar-chart"></b-icon> Tournament Statistics
+                </h5>
+                <span class="text-muted small">
+                    {{ statsData.completed_matches }}/{{ statsData.total_matches }} matches ·
+                    {{ statsData.total_goals }} total goals
+                </span>
+            </div>
+            <table class="stats-table">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Participant</th>
+                        <th>Played</th>
+                        <th>W</th>
+                        <th>D</th>
+                        <th>L</th>
+                        <th>GF</th>
+                        <th>GA</th>
+                        <th>GD</th>
+                        <th>Win %</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="(s, index) in statsData.ranked" :key="s.name + index"
+                        :class="{ 'stats-winner': statsData.winner === s.name || statsData.winner_team === s.name }">
+                        <td>{{ index + 1 }}</td>
+                        <td class="participant-name">
+                            {{ s.name }}
+                            <b-icon v-if="s.type === 'human'" icon="person" font-scale="0.7"></b-icon>
+                            <b-icon v-else icon="robot" font-scale="0.7"></b-icon>
+                        </td>
+                        <td>{{ s.matches_played }}</td>
+                        <td>{{ s.wins }}</td>
+                        <td>{{ s.draws }}</td>
+                        <td>{{ s.losses }}</td>
+                        <td>{{ s.goals_for }}</td>
+                        <td>{{ s.goals_against }}</td>
+                        <td>{{ s.goal_difference > 0 ? '+' : '' }}{{ s.goal_difference }}</td>
+                        <td>{{ (s.win_rate * 100).toFixed(0) }}%</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

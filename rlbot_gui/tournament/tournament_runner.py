@@ -3,6 +3,7 @@ Manages tournament state and execution
 """
 import json
 import uuid
+from datetime import datetime
 from typing import List, Dict, Any, Optional
 
 import eel
@@ -26,6 +27,34 @@ from rlbot_gui.tournament.team_manager import (
 
 # Global state for current tournament
 CURRENT_TOURNAMENT: Optional[TournamentState] = None
+
+
+def match_has_humans(match: Match) -> bool:
+    """
+    Check if a match contains one or more human participants.
+
+    Used by the LAN Match Workflow (Phase 3): matches with humans should
+    use the staging -> Players Ready -> real match flow so the host can set
+    up the LAN host and let humans join before bots are injected.
+    """
+    def _has_human(p) -> bool:
+        return p is not None and p.participant_type == 'human'
+
+    if match.team1 is not None and match.team2 is not None:
+        return (any(_has_human(p) for p in match.team1.participants) or
+                any(_has_human(p) for p in match.team2.participants))
+    return _has_human(match.participant1) or _has_human(match.participant2)
+
+
+def count_humans_in_match(match: Match) -> int:
+    """Count the number of human participants in a match."""
+    def _count(p) -> int:
+        return 1 if (p is not None and p.participant_type == 'human') else 0
+
+    if match.team1 is not None and match.team2 is not None:
+        return (sum(_count(p) for p in match.team1.participants) +
+                sum(_count(p) for p in match.team2.participants))
+    return _count(match.participant1) + _count(match.participant2)
 
 
 @eel.expose
@@ -95,6 +124,8 @@ def tournament_new(name: str, tournament_format: str, participants_json: str, ma
             CURRENT_TOURNAMENT.matches = matches
     
     CURRENT_TOURNAMENT.current_round = 1
+    # Add to saved tournaments list
+    tournament_save_to_list()
     return tournament_save_state()
 
 
@@ -342,19 +373,34 @@ def tournament_get_state() -> Optional[str]:
     return json.dumps(CURRENT_TOURNAMENT.to_dict())
 
 
+# Phase 3: LAN Match Workflow state.
+# Maps match_id -> {'bot_list': full bot_list, 'match_settings': real match settings}
+# for matches that are currently in the staging phase (lobby open, humans joining).
+STAGING_STATE: Dict[str, Dict[str, Any]] = {}
+
+
 @eel.expose
-def tournament_start_match(match_id: str) -> str:
+def tournament_start_match(match_id: str, use_staging: bool = False) -> str:
     """
     Start a specific match in the tournament. Launches the match automatically.
-    
+
+    Phase 3 LAN Match Workflow: when the match contains human participants and
+    `use_staging` is True, a "staging" match is launched first (humans only,
+    no bots, no instant start) so the host can set up the LAN host and let
+    humans join. The real match is then launched via
+    `tournament_confirm_players_ready()` with
+    `Existing Match Behaviour = Continue And Spawn`.
+
     Args:
         match_id: ID of the match to start
-    
+        use_staging: When True and the match has humans, launch a staging
+            lobby instead of the real match.
+
     Returns:
         JSON string with match info and status
     """
     global CURRENT_TOURNAMENT
-    
+
     if CURRENT_TOURNAMENT is None:
         return json.dumps({'error': 'No tournament loaded'})
     
@@ -434,24 +480,159 @@ def tournament_start_match(match_id: str) -> str:
         'scripts': []
     }
     
-    # Launch the match in a separate thread
+    has_humans = match_has_humans(match)
+    human_count = count_humans_in_match(match)
+
+    # Phase 3: LAN Match Workflow.
+    # If the match has humans and the operator opted into the staging flow,
+    # launch a staging lobby (humans only, no bots, no instant start) so the
+    # host can set up the LAN host and let humans join. The real match is
+    # launched later via tournament_confirm_players_ready().
+    if has_humans and use_staging:
+        staging_bot_list = [b for b in bot_list if b.get('type') == 'human']
+        staging_settings = dict(match_settings)
+        staging_settings['instant_start'] = False
+        staging_settings['match_behavior'] = 'Restart'
+        # Store the full bot list + real settings so the real match can be
+        # launched with 'Continue And Spawn' once players are ready.
+        STAGING_STATE[match_id] = {
+            'bot_list': bot_list,
+            'match_settings': match_settings,
+            'match_id': match_id
+        }
+        eel.spawn(launch_tournament_match, staging_bot_list, staging_settings, match_id, False)
+        return json.dumps({
+            'success': True,
+            'match_id': match_id,
+            'staging': True,
+            'has_humans': True,
+            'human_count': human_count,
+            'participants': [match.participant1.name, match.participant2.name]
+        })
+
+    # All-bot match (or operator chose "start immediately"): launch directly.
     eel.spawn(launch_tournament_match, bot_list, match_settings, match_id)
-    
+
     return json.dumps({
         'success': True,
         'match_id': match_id,
+        'staging': False,
+        'has_humans': has_humans,
+        'human_count': human_count,
         'participants': [match.participant1.name, match.participant2.name]
     })
 
 
-def launch_tournament_match(bot_list: list, match_settings: dict, match_id: str):
+@eel.expose
+def tournament_match_has_humans(match_id: str) -> str:
+    """
+    Report whether a match contains human participants (Phase 3 LAN workflow).
+
+    Returns:
+        JSON string: {'has_humans': bool, 'human_count': int}
+    """
+    global CURRENT_TOURNAMENT
+
+    if CURRENT_TOURNAMENT is None:
+        return json.dumps({'error': 'No tournament loaded'})
+
+    match = None
+    for m in CURRENT_TOURNAMENT.matches:
+        if m.match_id == match_id:
+            match = m
+            break
+    if match is None:
+        for m in CURRENT_TOURNAMENT.losers_bracket_matches:
+            if m.match_id == match_id:
+                match = m
+                break
+    if match is None:
+        return json.dumps({'error': f'Match {match_id} not found'})
+
+    return json.dumps({
+        'has_humans': match_has_humans(match),
+        'human_count': count_humans_in_match(match)
+    })
+
+
+@eel.expose
+def tournament_confirm_players_ready(match_id: str) -> str:
+    """
+    Phase 3 LAN Match Workflow: launch the real match after the operator
+    confirms all humans are connected to the staging lobby.
+
+    The real match is launched with `Existing Match Behaviour = Continue And
+    Spawn` so bots are injected into the already-hosted lobby without tearing
+    it down (humans stay connected).
+
+    Args:
+        match_id: ID of the match currently in the staging phase.
+
+    Returns:
+        JSON string with status
+    """
+    global CURRENT_TOURNAMENT
+
+    if CURRENT_TOURNAMENT is None:
+        return json.dumps({'error': 'No tournament loaded'})
+
+    staging = STAGING_STATE.get(match_id)
+    if staging is None:
+        return json.dumps({'error': f'No staging lobby found for match {match_id}. Start the match with staging first.'})
+
+    bot_list = staging['bot_list']
+    match_settings = dict(staging['match_settings'])
+    # Critical: inject bots into the existing lobby without tearing it down.
+    match_settings['match_behavior'] = 'Continue And Spawn'
+    match_settings['instant_start'] = True
+
+    del STAGING_STATE[match_id]
+
+    eel.spawn(launch_tournament_match, bot_list, match_settings, match_id)
+
+    return json.dumps({
+        'success': True,
+        'match_id': match_id,
+        'real_match_launched': True
+    })
+
+
+@eel.expose
+def tournament_cancel_staging(match_id: str) -> str:
+    """
+    Phase 3 LAN Match Workflow: abandon the staging lobby for a match.
+
+    The staging lobby is left running (the operator can close it in-game);
+    the tournament simply drops the pending real-match state so the match can
+    be re-started later.
+
+    Args:
+        match_id: ID of the match currently in the staging phase.
+
+    Returns:
+        JSON string with status
+    """
+    if match_id in STAGING_STATE:
+        del STAGING_STATE[match_id]
+    return json.dumps({'success': True, 'match_id': match_id})
+
+
+def launch_tournament_match(bot_list: list, match_settings: dict, match_id: str, wait_for_completion: bool = True):
     """
     Launch the tournament match in a separate thread.
+
+    Args:
+        bot_list: Bot/human list for the match.
+        match_settings: Match settings dict.
+        match_id: Tournament match ID (used for result recording).
+        wait_for_completion: When False (staging match), the match is launched
+            and the function returns immediately without waiting for the match
+            to end or recording a result.
     """
     from rlbot_gui.match_runner.match_runner import start_match_helper
     from rlbot_gui.persistence.settings import load_settings, load_launcher_settings, launcher_preferences_from_map
     
-    print(f"DEBUG: launch_tournament_match called with match_id={match_id}")
+    print(f"DEBUG: launch_tournament_match called with match_id={match_id} wait_for_completion={wait_for_completion}")
     print(f"DEBUG: bot_list={bot_list}")
     print(f"DEBUG: match_settings={match_settings}")
     
@@ -459,9 +640,15 @@ def launch_tournament_match(bot_list: list, match_settings: dict, match_id: str)
         launcher_preference_map = load_launcher_settings()
         launcher_prefs = launcher_preferences_from_map(launcher_preference_map)
         print(f"DEBUG: About to call start_match_helper")
-        team_scores = start_match_helper(bot_list, match_settings, launcher_prefs)
+        team_scores = start_match_helper(bot_list, match_settings, launcher_prefs, wait_for_completion=wait_for_completion)
         print(f"DEBUG: start_match_helper returned team_scores={team_scores}")
-        
+
+        # Staging match: no result to record, the real match is launched later
+        # via tournament_confirm_players_ready().
+        if not wait_for_completion:
+            print(f"DEBUG: Staging match for {match_id} launched, not waiting for completion")
+            return
+
         # Automatically record the winner based on team scores
         if team_scores:
             # Find which team won (higher score)
@@ -943,6 +1130,214 @@ def tournament_import_from_json(tournament_json: str) -> str:
         return tournament_save_state()
     except Exception as e:
         return json.dumps({'error': f'Failed to import tournament: {str(e)}'})
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: Tournament Templates
+# A template captures the creation-time configuration of a tournament
+# (name, format, team size, allow_duplicates, mutators, human count/names)
+# so operators can quickly spin up similar tournaments.
+# ---------------------------------------------------------------------------
+TEMPLATES_KEY = "tournament_templates"
+
+
+def _load_templates() -> List[Dict[str, Any]]:
+    settings = QSettings("rlbotgui", "tournament_save")
+    list_json = settings.value(TEMPLATES_KEY, type=str)
+    try:
+        return json.loads(list_json) if list_json else []
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+
+def _save_templates(templates: List[Dict[str, Any]]) -> None:
+    settings = QSettings("rlbotgui", "tournament_save")
+    settings.setValue(TEMPLATES_KEY, json.dumps(templates))
+
+
+@eel.expose
+def tournament_save_template(template_name: str, template_json: str) -> str:
+    """
+    Save a tournament template (creation-time configuration).
+
+    Args:
+        template_name: Display name for the template.
+        template_json: JSON string of the template config:
+            {
+              'format': 'single_elimination',
+              'team_size': 2,
+              'allow_duplicates': false,
+              'mutators': {...},
+              'human_count': 0,
+              'human_names': []
+            }
+
+    Returns:
+        JSON string with the saved template.
+    """
+    try:
+        config = json.loads(template_json) if template_json else {}
+    except (json.JSONDecodeError, TypeError) as e:
+        return json.dumps({'error': f'Invalid template JSON: {e}'})
+
+    if not template_name or not template_name.strip():
+        return json.dumps({'error': 'Template name is required'})
+
+    templates = _load_templates()
+    template = {
+        'template_id': str(uuid.uuid4())[:8],
+        'name': template_name.strip(),
+        'config': config,
+        'created_at': datetime.now().isoformat()
+    }
+
+    # Replace an existing template with the same name, otherwise append.
+    existing = next((t for t in templates if t['name'].lower() == template['name'].lower()), None)
+    if existing is not None:
+        existing['config'] = config
+        existing['created_at'] = template['created_at']
+    else:
+        templates.append(template)
+
+    _save_templates(templates)
+    return json.dumps({'success': True, 'template': template})
+
+
+@eel.expose
+def tournament_get_templates() -> str:
+    """
+    List all saved tournament templates.
+
+    Returns:
+        JSON string of the template list.
+    """
+    return json.dumps(_load_templates())
+
+
+@eel.expose
+def tournament_delete_template(template_id: str) -> str:
+    """
+    Delete a tournament template by ID.
+
+    Args:
+        template_id: ID of the template to delete.
+
+    Returns:
+        JSON string with status.
+    """
+    templates = _load_templates()
+    templates = [t for t in templates if t['template_id'] != template_id]
+    _save_templates(templates)
+    return json.dumps({'success': True})
+
+
+@eel.expose
+def tournament_get_statistics() -> str:
+    """
+    Phase 3: Compute tournament statistics from completed matches.
+
+    Returns per-participant (or per-team) stats:
+      - matches_played, wins, losses, draws
+      - goals_for, goals_against, goal_difference
+      - win_rate (0.0-1.0)
+    Plus overall tournament stats:
+      - total_matches, completed_matches, total_goals
+
+    Returns:
+        JSON string with the statistics report.
+    """
+    global CURRENT_TOURNAMENT
+
+    if CURRENT_TOURNAMENT is None:
+        return json.dumps({'error': 'No tournament loaded'})
+
+    # Determine the entity list: teams in team mode, participants in 1v1.
+    is_team_mode = (CURRENT_TOURNAMENT.team_size > 1 and
+                    len(CURRENT_TOURNAMENT.teams) > 0)
+
+    if is_team_mode:
+        entities = {t.team_id: {'name': t.name, 'type': 'team'} for t in CURRENT_TOURNAMENT.teams}
+    else:
+        entities = {p.participant_id: {'name': p.name, 'type': p.participant_type}
+                    for p in CURRENT_TOURNAMENT.participants}
+
+    stats = {
+        eid: {
+            'name': info['name'],
+            'type': info['type'],
+            'matches_played': 0,
+            'wins': 0,
+            'losses': 0,
+            'draws': 0,
+            'goals_for': 0,
+            'goals_against': 0,
+            'goal_difference': 0,
+            'win_rate': 0.0
+        } for eid, info in entities.items()
+    }
+
+    total_goals = 0
+    completed_matches = 0
+
+    all_matches = list(CURRENT_TOURNAMENT.matches) + list(CURRENT_TOURNAMENT.losers_bracket_matches)
+    for match in all_matches:
+        if not match.completed or not match.score:
+            continue
+        if not match.participant1 or not match.participant2:
+            continue
+        completed_matches += 1
+
+        p1_id = match.participant1.participant_id
+        p2_id = match.participant2.participant_id
+        s1, s2 = match.score[0], match.score[1]
+        total_goals += s1 + s2
+
+        if p1_id in stats:
+            stats[p1_id]['matches_played'] += 1
+            stats[p1_id]['goals_for'] += s1
+            stats[p1_id]['goals_against'] += s2
+        if p2_id in stats:
+            stats[p2_id]['matches_played'] += 1
+            stats[p2_id]['goals_for'] += s2
+            stats[p2_id]['goals_against'] += s1
+
+        if s1 > s2:
+            if p1_id in stats:
+                stats[p1_id]['wins'] += 1
+            if p2_id in stats:
+                stats[p2_id]['losses'] += 1
+        elif s2 > s1:
+            if p2_id in stats:
+                stats[p2_id]['wins'] += 1
+            if p1_id in stats:
+                stats[p1_id]['losses'] += 1
+        else:
+            if p1_id in stats:
+                stats[p1_id]['draws'] += 1
+            if p2_id in stats:
+                stats[p2_id]['draws'] += 1
+
+    # Finalize derived stats
+    for eid, s in stats.items():
+        s['goal_difference'] = s['goals_for'] - s['goals_against']
+        if s['matches_played'] > 0:
+            s['win_rate'] = round(s['wins'] / s['matches_played'], 3)
+
+    # Sort by wins desc, then goal difference desc
+    ranked = sorted(stats.values(), key=lambda x: (-x['wins'], -x['goal_difference'], -x['goals_for']))
+
+    return json.dumps({
+        'tournament_name': CURRENT_TOURNAMENT.name,
+        'format': CURRENT_TOURNAMENT.format,
+        'team_size': CURRENT_TOURNAMENT.team_size,
+        'total_matches': len(all_matches),
+        'completed_matches': completed_matches,
+        'total_goals': total_goals,
+        'completed': CURRENT_TOURNAMENT.completed,
+        'winner': CURRENT_TOURNAMENT.winner.name if CURRENT_TOURNAMENT.winner else None,
+        'winner_team': CURRENT_TOURNAMENT.winner_team.name if CURRENT_TOURNAMENT.winner_team else None,
+        'ranked': ranked
+    })
 
 
 @eel.expose

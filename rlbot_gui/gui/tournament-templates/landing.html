@@ -1,0 +1,93 @@
+<!-- Tournament Landing Page - Shown when no tournament is active -->
+<div class="tournament-landing noscroll-flex flex-grow-1" v-if="!tournamentState">
+    <div class="tournament-landing-content">
+        <div class="landing-header">
+            <h2>Tournament Mode</h2>
+            <b-button @click="returnToHome" variant="secondary">
+                <b-icon icon="arrow-left"></b-icon> Back to Main
+            </b-button>
+        </div>
+        
+        <p class="landing-description">Create a tournament bracket, add participants, and run matches!</p>
+        
+        <div class="saved-tournaments">
+            <h4 v-if="savedTournaments.length > 0">Saved Tournaments</h4>
+            <div v-if="savedTournaments.length === 0" class="no-saved-tournaments">
+                <p>No saved tournaments found.</p>
+            </div>
+            <div v-else class="saved-tournaments-list">
+                <div
+                    v-for="tournament in savedTournaments"
+                    :key="tournament.tournament_id"
+                    class="saved-tournament-card"
+                    @click="loadSavedTournament(tournament)"
+                >
+                    <div class="tournament-info-card">
+                        <h5>{{ tournament.name }}</h5>
+                        <span class="tournament-format-badge">{{ formatLabelFromData(tournament.format) }}</span>
+                        <span class="tournament-participants">{{ tournament.participants?.length || 0 }} participants</span>
+                        <span v-if="tournament.completed" class="tournament-completed">
+                            <b-icon icon="trophy-fill" variant="warning"></b-icon> Completed
+                        </span>
+                        <span v-else class="tournament-in-progress">In Progress</span>
+                    </div>
+                    <div class="tournament-actions-card">
+                        <b-button @click.stop="loadSavedTournament(tournament)" variant="primary" size="sm">
+                            Load
+                        </b-button>
+                        <b-button @click.stop="deleteSavedTournament(tournament.tournament_id)" variant="danger" size="sm">
+                            <b-icon icon="trash"></b-icon>
+                        </b-button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="create-new-section">
+            <b-button @click="showCreateModal" variant="success" size="lg">
+                <b-icon icon="plus-circle"></b-icon> Create New Tournament
+            </b-button>
+        </div>
+        
+        <!-- Import/Export Section -->
+        <div class="import-export-section mt-3">
+            <b-button @click="triggerImportFilePicker" variant="secondary" size="sm" class="mr-2">
+                <b-icon icon="upload"></b-icon> Import Tournament
+            </b-button>
+            <b-button @click="exportTournament" variant="secondary" size="sm" v-if="tournamentState">
+                <b-icon icon="download"></b-icon> Export Tournament
+            </b-button>
+        </div>
+
+        <!-- Tournament Templates -->
+        <div class="templates-section mt-3">
+            <h4 v-if="templates.length > 0">Tournament Templates</h4>
+            <div v-if="templates.length === 0" class="no-templates text-muted small">
+                <p>No templates saved. Create a tournament and save it as a template to quickly reuse its settings.</p>
+            </div>
+            <div v-else class="templates-list">
+                <div v-for="tpl in templates" :key="tpl.template_id" class="template-card">
+                    <div class="template-info">
+                        <h5>{{ tpl.name }}</h5>
+                        <span class="template-meta">
+                            {{ formatLabelFromData(tpl.config.format) }} ·
+                            {{ tpl.config.team_size }}v{{ tpl.config.team_size }}
+                            <span v-if="tpl.config.allow_duplicates"> · Party Mode</span>
+                        </span>
+                    </div>
+                    <div class="template-actions">
+                        <b-button @click="applyTemplate(tpl)" variant="primary" size="sm">
+                            <b-icon icon="plus-circle"></b-icon> Use
+                        </b-button>
+                        <b-button @click="deleteTemplate(tpl.template_id)" variant="danger" size="sm">
+                            <b-icon icon="trash"></b-icon>
+                        </b-button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Hidden file input for importing tournament JSON files -->
+        <input type="file" ref="importFileInput" accept=".json,application/json" style="display:none" @change="handleImportFileSelected">
+    </div>
+</div>

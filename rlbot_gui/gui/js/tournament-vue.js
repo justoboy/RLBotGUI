@@ -92,6 +92,13 @@ export default {
             manualPairings: [],         // List of {participant_id1, participant_id2} objects
             selectedPairingParticipants: [],  // IDs of currently selected participants
             pairingWarnings: [],        // Warnings about pairing conflicts
+            // Phase 4: Start Match Button + Auto-Start
+            selectedMatchId: null,      // ID of currently selected match for starting
+            autoStartEnabled: false,    // Auto-start toggle
+            autoStartInterval: 30,      // Auto-start interval in seconds (default 30s)
+            autoStartSkipHumans: true,  // Skip matches with humans
+            autoStartTimer: null,       // Timer interval reference
+            autoStartCountdown: null,   // Current countdown value
         };
     },
     computed: {
@@ -249,20 +256,63 @@ export default {
             return { left, center, right };
         },
         // Butterfly bracket positions: returns { match_id: topPercent } for each match.
-        // Each wing's round 1 is spread evenly across the full height; every later
-        // round is placed at the midpoint of the matches that feed into it.
+        // Each wing independently spreads its round 1 matches across 0-100% of its
+        // own column; later rounds are placed at the midpoint of their feeders.
+        // This ensures both wings' semi-finals align at 50% with the finals.
         wbMatchPositions() {
             if (!this.tournamentState || !this.tournamentState.matches) return {};
             const { left, center, right } = this.butterflyRounds;
             const positions = {};
-            for (const wing of [left, right]) {
-                // Flatten all matches in this wing and compute positions
-                const wingMatches = wing.flatMap(round => round.matches);
-                Object.assign(positions, this.computeBracketPositions(wingMatches));
-            }
+            const allMatches = this.tournamentState.matches;
+
+            // Position a single wing's matches independently across 0-100%
+            const positionWing = (wingRounds) => {
+                if (!wingRounds || wingRounds.length === 0) return;
+
+                // Find the round with the most matches (that's round 1)
+                let r1 = wingRounds[0];
+                for (const r of wingRounds) {
+                    if (r.matches.length > r1.matches.length) r1 = r;
+                }
+
+                // Spread round 1 matches evenly across 0-100% with margins
+                const n = r1.matches.length;
+                const spacing = 100 / (n + 1);
+                for (let i = 0; i < n; i++) {
+                    positions[r1.matches[i].match_id] = spacing * (i + 1);
+                }
+
+                // Process remaining rounds in ascending round order
+                const sorted = [...wingRounds].sort((a, b) => a.roundNum - b.roundNum);
+                for (const round of sorted) {
+                    if (round.roundNum === r1.roundNum) continue; // Already positioned
+                    for (const match of round.matches) {
+                        if (positions[match.match_id] !== undefined) continue;
+                        // Find feeders (matches that feed into this match)
+                        const feeders = allMatches.filter(f => f.next_match_id === match.match_id);
+                        if (feeders.length > 0) {
+                            const sum = feeders.reduce((acc, f) => {
+                                const pos = positions[f.match_id];
+                                return acc + (pos !== undefined ? pos : 50);
+                            }, 0);
+                            positions[match.match_id] = sum / feeders.length;
+                        } else {
+                            positions[match.match_id] = 50;
+                        }
+                    }
+                }
+            };
+
+            positionWing(left);
+            positionWing(right);
+
+            // Center (finals) at 50%
             if (center) {
-                positions[center.matches[0].match_id] = 50;
+                for (const m of center.matches) {
+                    positions[m.match_id] = 50;
+                }
             }
+
             return positions;
         },
         lbMatchPositions() {
@@ -923,6 +973,177 @@ export default {
             return null;
         },
         
+        // Phase 4: Start Match Button + Auto-Start
+        // Select a match for starting (click-to-select, only one at a time)
+        selectMatch(match) {
+            if (match.completed) return;
+            if (!match.participant1 || !match.participant2) return;
+            
+            // Toggle selection: clicking the same match deselects it
+            if (this.selectedMatchId === match.match_id) {
+                this.selectedMatchId = null;
+            } else {
+                this.selectedMatchId = match.match_id;
+            }
+        },
+        
+        // Start the selected match (called by Start Match button or Enter key)
+        async startSelectedMatch() {
+            // If a match is selected, start it
+            if (this.selectedMatchId) {
+                const match = this.findMatchById(this.selectedMatchId);
+                if (!match) return;
+                
+                // Clear selection after starting
+                this.selectedMatchId = null;
+                
+                // Start the match
+                await this.onMatchClick(match);
+                return;
+            }
+            
+            // No match selected - find the next match to start (for auto-start)
+            const nextMatch = this.findNextAutoStartMatch();
+            if (nextMatch) {
+                await this.onMatchClick(nextMatch);
+            }
+        },
+        
+        // Toggle auto-start mode
+        toggleAutoStart() {
+            if (this.autoStartEnabled) {
+                // Disable auto-start
+                this.autoStartEnabled = false;
+                this.clearAutoStartTimer();
+            } else {
+                // Enable auto-start
+                this.autoStartEnabled = true;
+                this.startAutoStartTimer();
+            }
+        },
+        
+        // Clear the auto-start timer
+        clearAutoStartTimer() {
+            if (this.autoStartTimer) {
+                clearInterval(this.autoStartTimer);
+                this.autoStartTimer = null;
+            }
+            this.autoStartCountdown = null;
+        },
+        
+        // Start the auto-start timer for the next match
+        startAutoStartTimer() {
+            // Clear any existing timer
+            this.clearAutoStartTimer();
+            
+            // Find the next available match (first incomplete match in current round)
+            const nextMatch = this.findNextAutoStartMatch();
+            if (!nextMatch) {
+                this.autoStartEnabled = false;
+                return;
+            }
+            
+            // Check if we should skip this match (has humans and skipHumans is enabled)
+            if (this.autoStartSkipHumans && this.matchHasHumans(nextMatch)) {
+                console.log('[Auto-Start] Skipping match with humans:', nextMatch.match_id);
+                // Still start the timer but don't auto-start this match
+                // The user can manually start it or wait for the next match
+                return;
+            }
+            
+            // Start countdown
+            this.autoStartCountdown = this.autoStartInterval;
+            
+            this.autoStartTimer = setInterval(() => {
+                this.autoStartCountdown--;
+                
+                if (this.autoStartCountdown <= 0) {
+                    this.clearAutoStartTimer();
+                    this.startSelectedMatch();
+                }
+            }, 1000);
+        },
+        
+        // Find the next match that can be auto-started
+        findNextAutoStartMatch() {
+            // Check winners bracket matches
+            for (const roundMatches of this.matchesByRound) {
+                for (const match of roundMatches) {
+                    if (match.completed) continue;
+                    if (!match.participant1 || !match.participant2) continue;
+                    
+                    // Check if we should skip matches with humans
+                    if (this.autoStartSkipHumans && this.matchHasHumans(match)) {
+                        continue;
+                    }
+                    
+                    return match;
+                }
+            }
+            
+            // Check losers bracket matches
+            for (const roundMatches of this.losersBracketMatchesByRound) {
+                for (const match of roundMatches) {
+                    if (match.completed) continue;
+                    if (!match.participant1 || !match.participant2) continue;
+                    
+                    // Check if we should skip matches with humans
+                    if (this.autoStartSkipHumans && this.matchHasHumans(match)) {
+                        continue;
+                    }
+                    
+                    return match;
+                }
+            }
+            
+            return null;
+        },
+        
+        // Check if a match has human participants
+        matchHasHumans(match) {
+            if (!match || !this.tournamentState) return false;
+            
+            // Check team1 participants
+            if (match.team1 && match.team1.participants) {
+                for (const p of match.team1.participants) {
+                    if (p.participant_type === 'human') return true;
+                }
+            }
+            
+            // Check team2 participants
+            if (match.team2 && match.team2.participants) {
+                for (const p of match.team2.participants) {
+                    if (p.participant_type === 'human') return true;
+                }
+            }
+            
+            // Check participant1 (1v1 mode)
+            if (match.participant1 && match.participant1.participant_type === 'human') return true;
+            
+            // Check participant2 (1v1 mode)
+            if (match.participant2 && match.participant2.participant_type === 'human') return true;
+            
+            return false;
+        },
+        
+        // Handle match completion - if auto-start is enabled, start timer for next match
+        onMatchComplete() {
+            if (this.autoStartEnabled) {
+                // Small delay before starting the next match
+                setTimeout(() => {
+                    this.startAutoStartTimer();
+                }, 1000);
+            }
+        },
+        
+        // Keyboard shortcut handler (Enter key starts selected match)
+        handleKeyPress(event) {
+            if (event.key === 'Enter' && this.selectedMatchId && !this.autoStartEnabled) {
+                event.preventDefault();
+                this.startSelectedMatch();
+            }
+        },
+        
         showMatchCompleteModal() {
             if (!this.currentMatch) return;
             this.$bvModal.show('match-result-modal');
@@ -931,6 +1152,9 @@ export default {
         async onMatchClick(match) {
             if (match.completed) return;
             if (!match.participant1 || !match.participant2) return;
+
+            // Phase 4: Clear selection when starting a match
+            this.selectedMatchId = null;
 
             // Phase 3: LAN Match Workflow.
             // If the match has humans, ask whether to use the staging flow
@@ -1231,6 +1455,8 @@ export default {
                         clearInterval(pollInterval);
                         this.refreshTeamBalance();
                         this.refreshStats();
+                        // Phase 4: Auto-start next match if enabled
+                        this.onMatchComplete();
                     }
                 } catch (e) {
                     console.log('Polling error:', e);
@@ -1583,12 +1809,23 @@ export default {
         // Redraw connectors when the window resizes
         this._bracketResizeHandler = () => this.drawBracketConnectors();
         window.addEventListener('resize', this._bracketResizeHandler);
+        
+        // Phase 4: Add keyboard event listener for Enter key shortcut
+        this._keyPressHandler = (event) => this.handleKeyPress(event);
+        window.addEventListener('keydown', this._keyPressHandler);
     },
     beforeDestroy() {
         if (this._bracketResizeHandler) {
             window.removeEventListener('resize', this._bracketResizeHandler);
             this._bracketResizeHandler = null;
         }
+        // Phase 4: Remove keyboard event listener
+        if (this._keyPressHandler) {
+            window.removeEventListener('keydown', this._keyPressHandler);
+            this._keyPressHandler = null;
+        }
+        // Clear auto-start timer on component destroy
+        this.clearAutoStartTimer();
     },
     watch: {
         // Watch for tournament state changes and redraw connectors

@@ -15,10 +15,10 @@
                         <div v-for="match in wingRound.matches" :key="match.match_id"
                               ref="wb_matches"
                               class="bracket-match butterfly-match"
-                              :class="{ 'completed': match.completed, 'active': isMatchActive(match), 'in-progress': isMatchInProgress(match) }"
+                              :class="{ 'completed': match.completed, 'active': isMatchActive(match), 'in-progress': isMatchInProgress(match), 'selected': selectedMatchId === match.match_id }"
                               :style="{ top: wbMatchPositions[match.match_id] + '%' }"
                               :data-match-id="match.match_id"
-                              @click="onMatchClick(match)">
+                              @click="selectMatch(match)">
                             <div class="match-status-row">
                                 <span v-if="match.completed" class="match-result">
                                     <b-icon icon="check-circle-fill" variant="success"></b-icon>
@@ -56,10 +56,10 @@
                     <div v-for="match in butterflyRounds.center.matches" :key="match.match_id"
                           ref="wb_matches"
                           class="bracket-match butterfly-match finals-match"
-                          :class="{ 'completed': match.completed, 'active': isMatchActive(match), 'in-progress': isMatchInProgress(match) }"
+                          :class="{ 'completed': match.completed, 'active': isMatchActive(match), 'in-progress': isMatchInProgress(match), 'selected': selectedMatchId === match.match_id }"
                           :style="{ top: wbMatchPositions[match.match_id] + '%' }"
                           :data-match-id="match.match_id"
-                          @click="onMatchClick(match)">
+                          @click="selectMatch(match)">
                         <div class="match-status-row">
                             <span v-if="match.completed" class="match-result">
                                 <b-icon icon="check-circle-fill" variant="success"></b-icon>
@@ -96,10 +96,10 @@
                         <div v-for="match in wingRound.matches" :key="match.match_id"
                               ref="wb_matches"
                               class="bracket-match butterfly-match"
-                              :class="{ 'completed': match.completed, 'active': isMatchActive(match), 'in-progress': isMatchInProgress(match) }"
+                              :class="{ 'completed': match.completed, 'active': isMatchActive(match), 'in-progress': isMatchInProgress(match), 'selected': selectedMatchId === match.match_id }"
                               :style="{ top: wbMatchPositions[match.match_id] + '%' }"
                               :data-match-id="match.match_id"
-                              @click="onMatchClick(match)">
+                              @click="selectMatch(match)">
                             <div class="match-status-row">
                                 <span v-if="match.completed" class="match-result">
                                     <b-icon icon="check-circle-fill" variant="success"></b-icon>
@@ -144,10 +144,10 @@
                     <div v-for="match in roundMatches" :key="match.match_id"
                           ref="lb_matches"
                           class="bracket-match losers-match butterfly-match"
-                          :class="{ 'completed': match.completed, 'active': isMatchActive(match), 'in-progress': isMatchInProgress(match) }"
+                          :class="{ 'completed': match.completed, 'active': isMatchActive(match), 'in-progress': isMatchInProgress(match), 'selected': selectedMatchId === match.match_id }"
                           :style="{ top: lbMatchPositions[match.match_id] + '%' }"
                           :data-match-id="match.match_id"
-                          @click="onMatchClick(match)">
+                          @click="selectMatch(match)">
                         <div class="match-status-row">
                             <span v-if="match.completed" class="match-result">
                                 <b-icon icon="check-circle-fill" variant="success"></b-icon>

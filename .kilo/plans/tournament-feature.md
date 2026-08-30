@@ -359,14 +359,14 @@ rlbot_gui/
      - ✅ **Shareable tournament files** — import/export already implemented in Phase 1 (`tournament_export_to_json` / `tournament_import_from_json` / `tournament_save_file_dialog`)
      - ✅ **Team balance indicators** — `tournament_team_balance()` now wired to a balance badge in the team panel (spread + balanced/unbalanced status)
 
-4. **Phase 4: New Features** — ⬜ PLANNED
+4. **Phase 4: New Features** — 🚧 IN PROGRESS
    - See [`tournament-feature-phase4.md`](.kilo/plans/tournament-feature-phase4.md) for detailed implementation plan
    - **Priority Order:**
-     1. 🐛 **Bug Fix**: Human participant validation (counting, team assignment, usernames)
-     2. Random team names (100+ combinations, editable, unique within tournament)
-     3. Seeding editor + manual team pairing (click-to-pair, auto-form remaining)
-     4. Start match button + auto-start matches (timer, skip humans option)
-     5. Swiss tournament format (log2 rounds, user-selectable tiebreakers, playoff for ties)
+     1. ✅ 🐛 **Bug Fix**: Human participant validation (counting, team assignment, usernames)
+     2. ✅ Random team names (100+ combinations, editable, unique within tournament)
+      3. ✅ Seeding editor + manual team pairing (click-to-pair, auto-form remaining)
+      4. ✅ Start match button + auto-start matches (timer, skip humans option)
+      5. Swiss tournament format (log2 rounds, user-selectable tiebreakers, playoff for ties)
      6. Match history view (round-grouped, expandable stats, CSV/JSON export)
      7. Tournament mutator presets (Standard, Rumble, Hoops, etc.)
 
@@ -441,14 +441,14 @@ When a match contains **one or more human participants**, do **not** launch the 
   5. ✅ Phase 3 LAN match workflow: staging→real flow with "Players Ready?" gate for matches with humans
   6. ✅ Phase 3 polish: better bracket visualization, templates, statistics, shareable files, team balance indicator UI
   7. ⬜ **Phase 4: New Features** — See [`tournament-feature-phase4.md`](.kilo/plans/tournament-feature-phase4.md) for detailed implementation plan
-     - **Priority Order:**
-       1. ✅ **Bug Fix**: Human participant validation (counting, team assignment, usernames) — Fixed: `v-model.number` on count input, `v-model` on name inputs, watcher to keep `human_names` in sync with `human_count`; bracket match cards cleaned up (duplicate participant name badges removed)
-       2. Random team names (100+ combinations, editable, unique within tournament)
-       3. Seeding editor + manual team pairing (click-to-pair, auto-form remaining)
-       4. Start match button + auto-start matches (timer, skip humans option)
-       5. Swiss tournament format (log2 rounds, user-selectable tiebreakers, playoff for ties)
-       6. Match history view (round-grouped, expandable stats, CSV/JSON export)
-       7. Tournament mutator presets (Standard, Rumble, Hoops, etc.)
+      - **Priority Order:**
+        1. ✅ **Bug Fix**: Human participant validation (counting, team assignment, usernames) — Fixed: `v-model.number` on count input, `v-model` on name inputs, watcher to keep `human_names` in sync with `human_count`; bracket match cards cleaned up (duplicate participant name badges removed)
+        2. ✅ Random team names (100+ combinations, editable, unique within tournament)
+        3. ✅ Seeding editor + manual team pairing (click-to-pair, auto-form remaining)
+        4. ✅ Start match button + auto-start matches (timer, skip humans option)
+        5. Swiss tournament format (log2 rounds, user-selectable tiebreakers, playoff for ties)
+        6. Match history view (round-grouped, expandable stats, CSV/JSON export)
+        7. Tournament mutator presets (Standard, Rumble, Hoops, etc.)
 
 ## Tournament Mutator Values Reference
 

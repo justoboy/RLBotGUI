@@ -32,6 +32,49 @@
         </div>
     </div>
 
+    <!-- Phase 4: Start Match Button + Auto-Start Controls -->
+    <div class="match-control-toolbar" v-if="tournamentState && !tournamentState.completed && !matchInProgress">
+        <div class="match-control-left">
+            <b-button @click="startSelectedMatch" 
+                      variant="success" 
+                      size="md"
+                      title="Start the selected match (press Enter to start) or next available match">
+                <b-icon icon="play-fill"></b-icon> Start Match
+            </b-button>
+            <div class="match-control-hint" v-if="selectedMatchId">
+                <b-icon icon="check-circle-fill" variant="success"></b-icon> Match selected
+            </div>
+        </div>
+        <div class="match-control-right">
+            <div class="auto-start-controls">
+                <label class="auto-start-label">
+                    <b-icon :icon="autoStartEnabled ? 'autopause' : 'hourglass-split'" 
+                            :variant="autoStartEnabled ? 'success' : 'secondary'" 
+                            font-scale="1.1"></b-icon>
+                    <span class="auto-start-toggle" 
+                          :class="{ 'enabled': autoStartEnabled }"
+                          @click="toggleAutoStart">
+                        {{ autoStartEnabled ? 'Auto-Start ON' : 'Auto-Start OFF' }}
+                    </span>
+                </label>
+                <b-dropdown size="sm" variant="outline-secondary" text="Interval" class="ml-2">
+                    <b-dropdown-item @click="autoStartInterval = 10" :active="autoStartInterval === 10">10 seconds</b-dropdown-item>
+                    <b-dropdown-item @click="autoStartInterval = 30" :active="autoStartInterval === 30">30 seconds</b-dropdown-item>
+                    <b-dropdown-item @click="autoStartInterval = 60" :active="autoStartInterval === 60">1 minute</b-dropdown-item>
+                    <b-dropdown-item @click="autoStartInterval = 120" :active="autoStartInterval === 120">2 minutes</b-dropdown-item>
+                </b-dropdown>
+                <label class="skip-humans-label ml-2">
+                    <input type="checkbox" v-model="autoStartSkipHumans">
+                    <span>Only auto-start non-human matches</span>
+                </label>
+            </div>
+            <div class="auto-start-countdown" v-if="autoStartEnabled && autoStartCountdown !== null">
+                <b-icon icon="hourglass-split" variant="info"></b-icon>
+                Next match in: {{ autoStartCountdown }}s
+            </div>
+        </div>
+    </div>
+
     <!-- LAN Match Workflow staging banner -->
     <div class="lan-staging-banner" v-if="stagingMatchId">
         <b-icon icon="wifi" font-scale="1.2" variant="info"></b-icon>

@@ -52,7 +52,7 @@ This plan outlines Phase 4 features for the RLBotGUI tournament system, building
 | Phase 1 | ✅ Complete | 1v1 single elimination, import/export, basic bracket |
 | Phase 2 | ✅ Complete | Team sizes 2v2-5v5, double elimination, round robin, multi-human |
 | Phase 3 | ✅ Complete | LAN workflow, templates, statistics, bracket visualization, team balance |
-| Phase 4 | 🟢 In Progress | Swiss format, auto-start, team names ✅, manual pairing ✅, seeding editor ✅, match history |
+| Phase 4 | 🟢 In Progress | Swiss format, auto-start ✅, team names ✅, manual pairing ✅, seeding editor ✅, match history |
 
 ---
 
@@ -116,7 +116,7 @@ class SwissTiebreakerSettings:
 
 ---
 
-### 2. Auto-Start Matches
+### 2. Auto-Start Matches ✅ IMPLEMENTED
 
 **Description**: Automatic match progression with configurable timer between matches. Ideal for all-bot tournaments or when operator wants hands-off progression.
 
@@ -139,13 +139,21 @@ class SwissTiebreakerSettings:
   - Countdown display when active (e.g., "Next match in: 15s")
 - Auto-start status badge in match card (e.g., "Auto-starting in 15s")
 
-**Files to Modify**:
-- `rlbot_gui/tournament/tournament_runner.py` - Add auto-start timer logic
-- `rlbot_gui/gui/js/tournament-vue.js` - Add auto-start UI components
+**Files Modified**:
+- `rlbot_gui/gui/js/tournament-vue.js` - Added auto-start state, timer logic, and UI methods ✅
+- `rlbot_gui/gui/tournament-templates/active.html` - Added auto-start controls to the match toolbar ✅
+
+**Implementation Notes**:
+- Timer logic runs entirely client-side (no backend changes required) — a `setInterval`-based countdown drives the auto-start
+- Auto-start is OFF by default; toggled via the "Auto-Start ON/OFF" control in the match toolbar
+- When enabled, the countdown begins immediately and auto-advances to the next available match on expiry
+- "Only auto-start non-human matches" checkbox (defaults to true) skips matches containing `participant_type === 'human'`
+- Manual override: clicking "Start Match" cancels the active timer and starts immediately
+- Timer is cleaned up in `beforeDestroy()` to avoid leaks; `findNextAutoStartMatch()` walks rounds in order and returns the first startable match
 
 ---
 
-### 3. Start Match Button
+### 3. Start Match Button ✅ IMPLEMENTED
 
 **Description**: Replace immediate click-to-start with explicit "Start Match" button workflow. Match must be selected first, then user confirms start.
 
@@ -160,9 +168,19 @@ class SwissTiebreakerSettings:
 - Fixed toolbar with "Start Match" button (disabled when no selection)
 - Keyboard shortcut indicator (optional tooltip: "Press Enter to start")
 
-**Files to Modify**:
-- `rlbot_gui/gui/js/tournament-vue.js` - Add selection state, start match button handler
-- `rlbot_gui/gui/css/tournament.css` - Add selected match styling
+**Files Modified**:
+- `rlbot_gui/gui/js/tournament-vue.js` - Added `selectedMatchId` state, `selectMatch()`, `startSelectedMatch()`, and Enter key handler ✅
+- `rlbot_gui/gui/css/tournament.css` - Added `.bracket-match.selected` / `.round-robin-match.selected` highlight styling ✅
+- `rlbot_gui/gui/tournament-templates/active.html` - Added fixed "Start Match" toolbar button ✅
+- `rlbot_gui/gui/tournament-templates/bracket-view.html` - Match cards now call `selectMatch()` and bind the `selected` class ✅
+- `rlbot_gui/gui/tournament-templates/round-robin.html` - Same selection wiring for round-robin matches ✅
+
+**Implementation Notes**:
+- Click-to-start is replaced entirely: clicking a match now selects it (green border/glow) rather than launching it
+- Only one match is selectable at a time; clicking the selected match again deselects it
+- The "Start Match" toolbar button is always enabled — it starts the selected match, or the next available match when nothing is selected (used by auto-start)
+- Enter key starts the selected match (window-level listener, added in `mounted()` and removed in `beforeDestroy()`)
+- Completed or unpopulated matches cannot be selected
 
 ---
 
@@ -405,12 +423,12 @@ const MUTATOR_PRESETS = {
 - [ ] Playoff match when top 2 tied
 - [ ] Team sizes 1v1 through 5v5
 
-### Auto-Start
-- [ ] Timer countdown display
-- [ ] Toggle on/off behavior
-- [ ] Human match skip when checkbox enabled
-- [ ] Manual override cancels timer
-- [ ] Timer intervals (10s, 30s, 60s, 120s)
+### Auto-Start ✅
+- [x] Timer countdown display
+- [x] Toggle on/off behavior
+- [x] Human match skip when checkbox enabled
+- [x] Manual override cancels timer
+- [x] Timer intervals (10s, 30s, 60s, 120s)
 
 ### Random Team Names ✅
 - [x] 100+ unique combinations
@@ -419,11 +437,11 @@ const MUTATOR_PRESETS = {
 - [x] Custom name override
 - [x] Uniqueness enforcement
 
-### Start Match Button
-- [ ] Match selection highlight
-- [ ] Button enabled/disabled state
-- [ ] Enter key shortcut
-- [ ] Only one match selectable
+### Start Match Button ✅
+- [x] Match selection highlight
+- [x] Button enabled/disabled state
+- [x] Enter key shortcut
+- [x] Only one match selectable
 
 ### Random Team Names ✅
 - [x] 100+ unique combinations

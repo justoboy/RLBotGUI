@@ -48,9 +48,9 @@
     }
 }
 
-/* Bracket Section */
 .bracket-section {
     margin-bottom: 30px;
+    min-height: 400px; /* Ensure section has minimum height for bracket content */
 }
 
 .bracket-section .section-title {
@@ -461,7 +461,8 @@
     display: flex;
     gap: 20px;
     flex: 1;
-    overflow: hidden;
+    overflow-y: auto; /* Enable vertical scrolling for content that exceeds viewport */
+    overflow-x: hidden;
 }
 
 /* Bracket View */
@@ -472,7 +473,8 @@
     background: rgba(255, 255, 255, 0.05);
     border-radius: 10px;
     padding: 20px;
-    overflow: hidden;
+    overflow: visible; /* Allow content to flow naturally */
+    min-height: 1000px; /* Increased height for better spacing with many participants */
 }
 
 .bracket-header {
@@ -480,6 +482,7 @@
     justify-content: space-between;
     align-items: center;
     margin-bottom: 20px;
+    flex-shrink: 0; /* Prevent header from shrinking */
 }
 
 .bracket-header h4 {
@@ -489,7 +492,7 @@
 
 .bracket-tree {
     flex: 1;
-    overflow-y: auto;
+    overflow-y: visible; /* Let parent handle scrolling */
     display: flex;
     gap: 20px;
 }
@@ -498,6 +501,7 @@
     display: flex;
     flex-direction: column;
     min-width: 200px;
+    flex: 1;
 }
 
 .round-title {
@@ -513,6 +517,8 @@
     display: flex;
     flex-direction: column;
     gap: 15px;
+    position: relative; /* Establish positioning context for absolutely positioned children */
+    min-height: 200px; /* Minimum height - will expand based on positioned matches */
 }
 
 .bracket-match {
@@ -1244,11 +1250,11 @@
     flex-direction: row;
     align-items: stretch;
     flex: 1;
-    min-height: 0;
     gap: 30px;
     overflow-x: auto;
     padding: 12px 6px 16px;
     position: relative;
+    min-height: 800px; /* Minimum height for bracket rounds to display properly */
 }
 
 /* ============================================================
@@ -1288,7 +1294,7 @@
     flex-direction: column;
     flex: 1;
     min-width: 150px;
-    height: 100%;
+    min-height: 100%; /* Allow growth beyond parent height for tall brackets */
 }
 
 .round-title {
@@ -1309,7 +1315,7 @@
     flex-direction: column;
     justify-content: space-evenly;
     gap: 14px;
-    min-height: 0;
+    min-height: 1200px; /* Ensure enough vertical space for positioned matches */
     position: relative;
     overflow: visible;
 }
@@ -1641,4 +1647,159 @@
     gap: 10px;
     justify-content: flex-end;
     align-items: center;
+}
+
+/* ============================================================
+   Phase 4: Start Match Button + Auto-Start Matches
+   ============================================================ */
+
+/* Match Control Toolbar */
+.match-control-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    margin-bottom: 15px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+}
+
+.match-control-left {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.match-control-right {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.match-control-hint {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    color: #28a745;
+}
+
+/* Auto-Start Controls */
+.auto-start-controls {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.auto-start-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.auto-start-toggle {
+    font-size: 0.9rem;
+    color: #888;
+    cursor: pointer;
+    padding: 4px 10px;
+    border-radius: 6px;
+    transition: all 0.2s;
+}
+
+.auto-start-toggle:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.auto-start-toggle.enabled {
+    color: #28a745;
+    font-weight: 600;
+}
+
+.skip-humans-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85rem;
+    color: #aaa;
+    cursor: pointer;
+    user-select: none;
+}
+
+.skip-humans-label input[type="checkbox"] {
+    cursor: pointer;
+}
+
+/* Auto-Start Countdown Display */
+.auto-start-countdown {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    background: rgba(0, 217, 255, 0.15);
+    border: 1px solid rgba(0, 217, 255, 0.4);
+    border-radius: 6px;
+    font-size: 0.9rem;
+    color: #00d9ff;
+    font-weight: 600;
+    animation: countdown-pulse 1s infinite;
+}
+
+@keyframes countdown-pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
+
+/* Match Selection Styles */
+.bracket-match.selected {
+    border-color: #00ff88 !important;
+    box-shadow: 0 0 15px rgba(0, 255, 136, 0.4), inset 0 0 10px rgba(0, 255, 136, 0.1);
+    background: rgba(0, 255, 136, 0.1);
+    transform: scale(1.02);
+    transition: all 0.2s ease;
+}
+
+.bracket-match.selected:hover {
+    border-color: #00ff88 !important;
+    box-shadow: 0 0 20px rgba(0, 255, 136, 0.5), inset 0 0 15px rgba(0, 255, 136, 0.15);
+}
+
+/* Round Robin match selection */
+.round-robin-match.selected {
+    border-color: #00ff88 !important;
+    box-shadow: 0 0 15px rgba(0, 255, 136, 0.4), inset 0 0 10px rgba(0, 255, 136, 0.1);
+    background: rgba(0, 255, 136, 0.1);
+}
+
+/* Disabled button styling for Start Match button */
+.match-control-toolbar .btn-success:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: rgba(40, 167, 69, 0.3);
+    border-color: rgba(40, 167, 69, 0.5);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .match-control-toolbar {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .match-control-left,
+    .match-control-right {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .auto-start-controls {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
 }

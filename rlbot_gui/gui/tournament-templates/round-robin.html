@@ -10,8 +10,8 @@
         <div class="matches-list">
             <div v-for="match in tournamentState.matches" :key="match.match_id"
                  class="round-robin-match"
-                 :class="{ 'completed': match.completed, 'active': isMatchActive(match), 'in-progress': isMatchInProgress(match) }"
-                 @click="onMatchClick(match)">
+                 :class="{ 'completed': match.completed, 'active': isMatchActive(match), 'in-progress': isMatchInProgress(match), 'selected': selectedMatchId === match.match_id }"
+                 @click="selectMatch(match)">
                 <div class="match-info">
                     <span class="match-id">{{ match.match_id }}</span>
                     <span class="match-pair">

@@ -335,7 +335,7 @@ rlbot_gui/
    - ✅ Auto-save on match result
    - ✅ Import/export tournaments (implemented in Phase 1, not Phase 3 as originally planned)
 
-2. **Phase 2: Team Size Support + Multi-Human + Formats** — 🚧 IN PROGRESS
+2. **Phase 2: Team Size Support + Multi-Human + Formats** — ✅ COMPLETE
    - ✅ **Team formation UI and logic** (random, seeded snake draft, manual, party-mode duplicates)
    - ✅ **Support 2v2, 3v3, 4v4 team sizes**
    - ✅ **5v5 team size** (Rocket League has 5 kickoff spawns per side; max team size)
@@ -348,16 +348,27 @@ rlbot_gui/
    - ✅ **Human slot assignment** — humans are participants like bots; team formation assigns them to seats; `build_match_bot_list()` maps each to the correct team/slot
    - **Note**: Both main GUI and tournament use the same `start_match_helper` / `eel.start_match` entry point ([`gui.py:62`](rlbot_gui/gui.py:62)), so no separate LAN plumbing is needed. The `bot_list` passed to `start_match_helper` correctly reflects the chosen human count, and team slot indices align with the game's expected player ordering.
 
- 3. **Phase 3: Polish / Enhanced Features** — 🚧 IN PROGRESS
-    - ✅ **LAN Match Workflow (multi-human tournaments)** — staging→real flow with "Players Ready?" gate (see [LAN Match Workflow](#lan-match-workflow-multi-human-tournaments) below)
-      - ✅ Backend: `match_has_humans()` / `count_humans_in_match()` helpers, `tournament_start_match(use_staging)`, `tournament_match_has_humans()`, `tournament_confirm_players_ready()` (launches real match with `Continue And Spawn`), `tournament_cancel_staging()`
-      - ✅ `start_match_helper(..., wait_for_completion=False)` for the non-blocking staging lobby
-      - ✅ Frontend: staging banner + "Players Ready — Start Match" gate, confirm/cancel, shared `startMatchPolling()` helper
-    - ✅ **Better bracket visualization** — winner highlighting in match cards + CSS connector lines between rounds + emphasized final round (reference image [`rl_tournament_bracket.png`](rl_tournament_bracket.png) not present in repo; implemented a clean bracket look instead)
-    - ✅ **Tournament templates** — `tournament_save_template()` / `tournament_get_templates()` / `tournament_delete_template()`; "Save as Template" button + landing-page template list with "Use" to pre-fill the create modal
-    - ✅ **Statistics tracking** — `tournament_get_statistics()` (per-participant/team W-L-D, GF/GA/GD, win %, totals) + statistics panel in the active tournament view
-    - ✅ **Shareable tournament files** — import/export already implemented in Phase 1 (`tournament_export_to_json` / `tournament_import_from_json` / `tournament_save_file_dialog`)
-    - ✅ **Team balance indicators** — `tournament_team_balance()` now wired to a balance badge in the team panel (spread + balanced/unbalanced status)
+ 3. **Phase 3: Polish / Enhanced Features** — ✅ COMPLETE
+     - ✅ **LAN Match Workflow (multi-human tournaments)** — staging→real flow with "Players Ready?" gate (see [LAN Match Workflow](#lan-match-workflow-multi-human-tournaments) below)
+       - ✅ Backend: `match_has_humans()` / `count_humans_in_match()` helpers, `tournament_start_match(use_staging)`, `tournament_match_has_humans()`, `tournament_confirm_players_ready()` (launches real match with `Continue And Spawn`), `tournament_cancel_staging()`
+       - ✅ `start_match_helper(..., wait_for_completion=False)` for the non-blocking staging lobby
+       - ✅ Frontend: staging banner + "Players Ready — Start Match" gate, confirm/cancel, shared `startMatchPolling()` helper
+     - ✅ **Better bracket visualization** — winner highlighting in match cards + CSS connector lines between rounds + emphasized final round (reference image [`rl_tournament_bracket.png`](rl_tournament_bracket.png) not present in repo; implemented a clean bracket look instead)
+     - ✅ **Tournament templates** — `tournament_save_template()` / `tournament_get_templates()` / `tournament_delete_template()`; "Save as Template" button + landing-page template list with "Use" to pre-fill the create modal
+     - ✅ **Statistics tracking** — `tournament_get_statistics()` (per-participant/team W-L-D, GF/GA/GD, win %, totals) + statistics panel in the active tournament view
+     - ✅ **Shareable tournament files** — import/export already implemented in Phase 1 (`tournament_export_to_json` / `tournament_import_from_json` / `tournament_save_file_dialog`)
+     - ✅ **Team balance indicators** — `tournament_team_balance()` now wired to a balance badge in the team panel (spread + balanced/unbalanced status)
+
+4. **Phase 4: New Features** — ⬜ PLANNED
+   - See [`tournament-feature-phase4.md`](.kilo/plans/tournament-feature-phase4.md) for detailed implementation plan
+   - **Swiss Tournament Format** — Non-elimination format with log2(participants) rounds, user-selectable tiebreakers, head-to-head playoff for ties
+   - **Auto-Start Matches** — Configurable timer between matches, skip human matches option, manual override
+   - **Start Match Button** — Explicit start button instead of click-to-start, Enter key shortcut
+   - **Random Team Names** — 100+ descriptor+noun combinations, editable, unique within tournament
+   - **Manual Team Pairing** — Click-to-pair participants before auto-forming remaining teams
+   - **Tournament Mutator Presets** — Quick-select game modes (Standard, Rumble, Hoops, etc.)
+   - **Match History View** — Round-grouped history with expandable stats, CSV/JSON export
+   - **Seeding Editor** — Reorder participants before team formation
 
 ## LAN Match Workflow (Multi-Human Tournaments)
 
@@ -409,14 +420,35 @@ When a match contains **one or more human participants**, do **not** launch the 
   10. **Dynamic Humans**: The backend `get_tournament_bots()` returns only bots; the frontend builds the human participant list dynamically (count + usernames) and merges it with selected bots before calling `tournament_new()`
   11. **LAN Match Workflow (Phase 3)**: For matches with humans, use a staging→real flow: (1) launch a no-bot staging match so the host can set up the LAN host and let humans join, (2) gate on a "Players Ready?" button, (3) launch the real match with `Existing Match Behaviour = Continue and Spawn` so bots inject into the existing lobby without tearing it down. See [LAN Match Workflow](#lan-match-workflow-multi-human-tournaments).
 
+### Phase 4 Design Decisions (Confirmed)
+
+  12. **Swiss Format**: log2(participants) rounds (rounded up), user-selectable tiebreaker priority (score differential, goals scored, head-to-head), head-to-head playoff match when top 2 tied
+  13. **Auto-Start**: Predefined timer intervals (10s/30s/60s/120s), checkbox "skip human matches" defaults to true, manual start cancels timer
+  14. **Start Match Button**: Replace click-to-start entirely, match selection highlight, Enter key shortcut, only one match selectable at a time
+  15. **Random Team Names**: 100+ descriptor+noun combinations, generated during team formation, editable, re-randomize option, uniqueness enforced within tournament
+  16. **Manual Team Pairing**: Click-to-pair mechanism, move participant on conflict, capacity warnings, auto-form remaining teams after manual pairing
+  17. **Mutator Presets**: Single preset per tournament, quick-select game modes (Standard, Rumble, Hoops, Spike Rush, etc.), loads into dropdowns for editing
+  18. **Match History**: Round-grouped with expandable stats (all packet data: goals, saves, demolitions), CSV/JSON export, auto-refresh on match completion
+  19. **Seeding Editor**: Click-to-swap reordering, randomize button, accessed after mutator settings before team formation
+  20. **Bye Scheduling**: Automatic fair placement for top seeds (no UI, single/double elimination only)
+
 ## Next Steps
 
   1. ✅ Phase 1 (1v1 single elimination) — complete
   2. ✅ Phase 2 team size support (2v2, 3v3, 4v4, 5v5) — complete
   3. ✅ Phase 2 multi-human support — complete (dynamic human count + custom usernames)
   4. ✅ Phase 2 double elimination + round robin — complete
- 5. ✅ Phase 3 LAN match workflow: staging→real flow with "Players Ready?" gate for matches with humans
- 6. ✅ Phase 3 polish: better bracket visualization, templates, statistics, shareable files, team balance indicator UI
+  5. ✅ Phase 3 LAN match workflow: staging→real flow with "Players Ready?" gate for matches with humans
+  6. ✅ Phase 3 polish: better bracket visualization, templates, statistics, shareable files, team balance indicator UI
+  7. ⬜ **Phase 4: New Features** — See [`tournament-feature-phase4.md`](.kilo/plans/tournament-feature-phase4.md) for detailed implementation plan
+     - **Priority Order:**
+       1. 🐛 **Bug Fix**: Human participant validation (not counting toward participant total, not assigned to teams)
+       2. Random team names (100+ combinations, editable, unique within tournament)
+       3. Seeding editor + manual team pairing (click-to-pair, auto-form remaining)
+       4. Start match button + auto-start matches (timer, skip humans option)
+       5. Swiss tournament format (log2 rounds, user-selectable tiebreakers, playoff for ties)
+       6. Match history view (round-grouped, expandable stats, CSV/JSON export)
+       7. Tournament mutator presets (Standard, Rumble, Hoops, etc.)
 
 ## Tournament Mutator Values Reference
 

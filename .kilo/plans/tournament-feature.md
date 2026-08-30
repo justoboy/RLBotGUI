@@ -442,7 +442,7 @@ When a match contains **one or more human participants**, do **not** launch the 
   6. ✅ Phase 3 polish: better bracket visualization, templates, statistics, shareable files, team balance indicator UI
   7. ⬜ **Phase 4: New Features** — See [`tournament-feature-phase4.md`](.kilo/plans/tournament-feature-phase4.md) for detailed implementation plan
      - **Priority Order:**
-       1. 🐛 **Bug Fix**: Human participant validation (not counting toward participant total, not assigned to teams)
+       1. ✅ **Bug Fix**: Human participant validation (counting, team assignment, usernames) — Fixed: `v-model.number` on count input, `v-model` on name inputs, watcher to keep `human_names` in sync with `human_count`; bracket match cards cleaned up (duplicate participant name badges removed)
        2. Random team names (100+ combinations, editable, unique within tournament)
        3. Seeding editor + manual team pairing (click-to-pair, auto-form remaining)
        4. Start match button + auto-start matches (timer, skip humans option)

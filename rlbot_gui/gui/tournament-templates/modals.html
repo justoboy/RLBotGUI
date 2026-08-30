@@ -142,8 +142,7 @@
                         max="10"
                         size="sm"
                         style="width: 80px;"
-                        :value="newTournament.human_count"
-                        @input="setHumanCount($event.target.value)"
+                        v-model.number="newTournament.human_count"
                     ></b-form-input>
                     <small class="text-muted ml-2">
                         Human players are added to the participant pool automatically.
@@ -157,8 +156,7 @@
                             size="sm"
                             style="width: 200px;"
                             :placeholder="'Human ' + (idx + 1)"
-                            :value="name"
-                            @input="setHumanName(idx, $event.target.value)"
+                            v-model="newTournament.human_names[idx]"
                         ></b-form-input>
                     </div>
                 </div>

@@ -1255,6 +1255,18 @@ export default {
                 });
             },
             deep: true
+        },
+        // Keep human_names array in sync when human_count changes
+        'newTournament.human_count': {
+            handler(newCount) {
+                const c = Math.max(0, Math.min(Number(newCount) || 0, 10));
+                if (c !== (this.newTournament.human_count || 0)) {
+                    this.newTournament.human_count = c;
+                }
+                const names = this.newTournament.human_names || [];
+                while (names.length < c) names.push('');
+                this.newTournament.human_names = names.slice(0, c);
+            }
         }
     }
 };

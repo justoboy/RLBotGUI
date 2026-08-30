@@ -44,15 +44,6 @@
                                     <span class="team-bar-score" v-if="match.score">{{ match.score[1] }}</span>
                                 </div>
                             </div>
-                            <!-- Team members -->
-                            <div v-if="match.team1 && match.team2" class="match-team-members">
-                                <div class="team-member-list">
-                                    <span v-for="p in match.team1.participants" :key="'t1-' + p.participant_id" class="team-member">{{ p.name }}</span>
-                                </div>
-                                <div class="team-member-list">
-                                    <span v-for="p in match.team2.participants" :key="'t2-' + p.participant_id" class="team-member">{{ p.name }}</span>
-                                </div>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -179,15 +170,6 @@
                                            'tbd': !match.participant2 }">
                                 <span class="team-bar-name">{{ match.participant2?.name || 'TBD' }}</span>
                                 <span class="team-bar-score" v-if="match.score">{{ match.score[1] }}</span>
-                            </div>
-                        </div>
-                        <!-- Team members -->
-                        <div v-if="match.team1 && match.team2" class="match-team-members">
-                            <div class="team-member-list">
-                                <span v-for="p in match.team1.participants" :key="'lt1-' + p.participant_id" class="team-member">{{ p.name }}</span>
-                            </div>
-                            <div class="team-member-list">
-                                <span v-for="p in match.team2.participants" :key="'lt2-' + p.participant_id" class="team-member">{{ p.name }}</span>
                             </div>
                         </div>
                     </div>

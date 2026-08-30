@@ -58,9 +58,14 @@
         <div class="team-panel" v-if="tournamentState.team_size > 1 && tournamentState.teams && tournamentState.teams.length > 0">
             <div class="team-panel-header">
                 <h5>Teams ({{ tournamentState.team_size }}v{{ tournamentState.team_size }})</h5>
-                <b-button @click="reformTeams" variant="outline-primary" size="sm" v-if="!tournamentState.completed">
-                    <b-icon icon="shuffle"></b-icon> Re-form Teams
-                </b-button>
+                <div class="team-panel-actions">
+                    <b-button @click="randomizeTeamNames" variant="outline-primary" size="sm" v-if="!tournamentState.completed" title="Randomize all team names">
+                        <b-icon icon="shuffle"></b-icon> Randomize Names
+                    </b-button>
+                    <b-button @click="reformTeams" variant="outline-primary" size="sm" v-if="!tournamentState.completed">
+                        <b-icon icon="shuffle"></b-icon> Re-form Teams
+                    </b-button>
+                </div>
             </div>
             <!-- Team balance indicator -->
             <div class="team-balance-indicator" v-if="teamBalance">
@@ -79,7 +84,23 @@
             <div class="team-grid">
                 <div v-for="(team, index) in tournamentState.teams" :key="team.team_id" class="team-card">
                     <div class="team-card-name">
-                        {{ team.name }}
+                        <input v-if="editingTeamName === index"
+                               type="text"
+                               v-model="tournamentState.teams[index].name"
+                               @blur="handleTeamNameBlur(index)"
+                               @keyup.enter="handleTeamNameEnter(index)"
+                               @keyup.esc="cancelTeamNameEdit"
+                               class="team-name-input"
+                               ref="teamNameInput"
+                               v-focus
+                               :maxlength="50"
+                               :placeholder="`Team ${index + 1}`">
+                        <span v-else
+                              @dblclick="startTeamNameEdit(index)"
+                              class="team-name-display"
+                              :title="`Double-click to rename`">
+                            {{ team.name }}
+                        </span>
                         <span class="team-record">{{ team.wins }}W - {{ team.losses }}L</span>
                     </div>
                     <div class="team-card-members">

@@ -824,6 +824,47 @@
     color: #00d9ff;
 }
 
+.team-panel-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.team-card-name {
+    font-weight: bold;
+    color: #fff;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.team-name-display {
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 3px;
+    transition: background-color 0.15s;
+}
+
+.team-name-display:hover {
+    background-color: rgba(0, 217, 255, 0.15);
+}
+
+.team-name-input {
+    flex: 1;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid #00d9ff;
+    color: #fff;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: inherit;
+    font-weight: inherit;
+}
+
+.team-name-input:focus {
+    outline: none;
+    box-shadow: 0 0 5px rgba(0, 217, 255, 0.5);
+}
+
 .team-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));

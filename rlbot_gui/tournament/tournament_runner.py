@@ -22,7 +22,9 @@ from rlbot_gui.tournament.team_manager import (
     form_teams_manual,
     generate_team_bracket,
     build_match_bot_list,
-    team_balance_report
+    team_balance_report,
+    generate_team_names,
+    assign_random_team_names
 )
 
 # Global state for current tournament
@@ -295,6 +297,96 @@ def tournament_team_balance() -> str:
         return json.dumps({'balanced': True, 'spread': 0.0, 'strengths': {}})
 
     return json.dumps(team_balance_report(CURRENT_TOURNAMENT.teams))
+
+
+@eel.expose
+def tournament_randomize_team_names() -> str:
+    """
+    Re-randomize all team names with unique values from the name pool.
+
+    This generates fresh random names for all teams, ensuring no duplicates
+    within the tournament. Existing names are excluded from the pool to
+    prevent collisions.
+
+    Returns:
+        JSON string of updated tournament state
+    """
+    global CURRENT_TOURNAMENT
+
+    if CURRENT_TOURNAMENT is None:
+        return json.dumps({'error': 'No tournament loaded'})
+
+    if not CURRENT_TOURNAMENT.teams:
+        return json.dumps({'error': 'No teams to randomize'})
+
+    try:
+        assign_random_team_names(CURRENT_TOURNAMENT.teams)
+        # Update stand-in participant names in matches so bracket display
+        # reflects the new team names immediately.
+        for match in CURRENT_TOURNAMENT.matches:
+            if match.participant1 and match.team1:
+                match.participant1.name = match.team1.name
+            if match.participant2 and match.team2:
+                match.participant2.name = match.team2.name
+        for match in CURRENT_TOURNAMENT.losers_bracket_matches:
+            if match.participant1 and match.team1:
+                match.participant1.name = match.team1.name
+            if match.participant2 and match.team2:
+                match.participant2.name = match.team2.name
+        return tournament_save_state()
+    except ValueError as e:
+        return json.dumps({'error': str(e)})
+
+
+@eel.expose
+def tournament_rename_team(team_index: int, new_name: str) -> str:
+    """
+    Rename a specific team to a custom name.
+
+    Args:
+        team_index: 0-based index of the team
+        new_name: New name for the team (must be unique within tournament)
+
+    Returns:
+        JSON string of updated tournament state
+    """
+    global CURRENT_TOURNAMENT
+
+    if CURRENT_TOURNAMENT is None:
+        return json.dumps({'error': 'No tournament loaded'})
+
+    if team_index < 0 or team_index >= len(CURRENT_TOURNAMENT.teams):
+        return json.dumps({'error': f'Team index {team_index} out of range'})
+
+    if not new_name or not new_name.strip():
+        return json.dumps({'error': 'Team name cannot be empty'})
+
+    new_name = new_name.strip()
+
+    # Check for uniqueness within tournament
+    for i, team in enumerate(CURRENT_TOURNAMENT.teams):
+        if i != team_index and team.name and team.name.strip().lower() == new_name.lower():
+            return json.dumps({'error': f"Team name '{new_name}' is already used by another team"})
+
+    CURRENT_TOURNAMENT.teams[team_index].name = new_name
+
+    # Update stand-in participant name in matches
+    for match in CURRENT_TOURNAMENT.matches:
+        if match.team1 and match.team1.team_id == CURRENT_TOURNAMENT.teams[team_index].team_id:
+            if match.participant1:
+                match.participant1.name = new_name
+        if match.team2 and match.team2.team_id == CURRENT_TOURNAMENT.teams[team_index].team_id:
+            if match.participant2:
+                match.participant2.name = new_name
+    for match in CURRENT_TOURNAMENT.losers_bracket_matches:
+        if match.team1 and match.team1.team_id == CURRENT_TOURNAMENT.teams[team_index].team_id:
+            if match.participant1:
+                match.participant1.name = new_name
+        if match.team2 and match.team2.team_id == CURRENT_TOURNAMENT.teams[team_index].team_id:
+            if match.participant2:
+                match.participant2.name = new_name
+
+    return tournament_save_state()
 
 
 @eel.expose

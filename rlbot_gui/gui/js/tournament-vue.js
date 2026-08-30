@@ -82,6 +82,9 @@ export default {
             templateName: '',
             // Phase 3: Statistics
             statsData: null,
+            // Phase 4: Random team names
+            editingTeamName: -1,    // Index of team being edited, -1 if none
+            _handlingEnter: false,  // Internal flag to prevent double-save on Enter
         };
     },
     computed: {
@@ -754,6 +757,112 @@ export default {
             }
         },
 
+        // Phase 4: Random team names
+        startTeamNameEdit(index) {
+            this.editingTeamName = index;
+            this._handlingEnter = false;
+            // Focus the input after DOM updates
+            this.$nextTick(() => {
+                const input = this.$refs.teamNameInput;
+                if (input && input[index]) {
+                    input[index].focus();
+                    input[index].select();
+                }
+            });
+        },
+
+        cancelTeamNameEdit() {
+            this.editingTeamName = -1;
+            this._handlingEnter = false;
+        },
+
+        handleTeamNameEnter(index) {
+            // Set flag to prevent blur from triggering save
+            this._handlingEnter = true;
+            this.saveTeamNameEdit(index);
+        },
+
+        handleTeamNameBlur(index) {
+            // Only save on blur if Enter wasn't just pressed
+            if (!this._handlingEnter) {
+                this.saveTeamNameEdit(index);
+            }
+            this._handlingEnter = false;
+        },
+
+        async saveTeamNameEdit(index) {
+            // First, exit edit mode to prevent re-triggering on blur
+            this.editingTeamName = -1;
+
+            const team = this.tournamentState.teams[index];
+            if (!team) {
+                return;
+            }
+
+            const newName = team.name.trim();
+            if (!newName) {
+                alert('Team name cannot be empty.');
+                // Reload the state to restore the original name
+                try {
+                    const result = await eel.tournament_get_state()();
+                    this.tournamentState = JSON.parse(result);
+                } catch (e) {
+                    console.error('Failed to reload state:', e);
+                }
+                return;
+            }
+
+            // Check for duplicate names (compare against other teams only)
+            for (let i = 0; i < this.tournamentState.teams.length; i++) {
+                if (i !== index) {
+                    const otherName = this.tournamentState.teams[i].name;
+                    if (otherName && otherName.trim().toLowerCase() === newName.toLowerCase()) {
+                        alert(`Team name '${newName}' is already used by another team.`);
+                        // Reload the state to restore the original name
+                        try {
+                            const result = await eel.tournament_get_state()();
+                            this.tournamentState = JSON.parse(result);
+                        } catch (e) {
+                            console.error('Failed to reload state:', e);
+                        }
+                        return;
+                    }
+                }
+            }
+
+            try {
+                const result = await eel.tournament_rename_team(index, newName)();
+                const state = JSON.parse(result);
+                if (state.error) {
+                    alert('Error renaming team: ' + state.error);
+                    return;
+                }
+                this.tournamentState = state;
+            } catch (error) {
+                console.error('Error renaming team:', error);
+                alert('Error renaming team: ' + error);
+            }
+        },
+
+        async randomizeTeamNames() {
+            if (this.tournamentState.completed) {
+                alert('Tournament is already complete.');
+                return;
+            }
+            try {
+                const result = await eel.tournament_randomize_team_names()();
+                const state = JSON.parse(result);
+                if (state.error) {
+                    alert('Error randomizing team names: ' + state.error);
+                    return;
+                }
+                this.tournamentState = state;
+            } catch (error) {
+                console.error('Error randomizing team names:', error);
+                alert('Error randomizing team names: ' + error);
+            }
+        },
+
         winnerDisplayName() {
             if (!this.tournamentState) return '';
             if (this.tournamentState.winner_team) return this.tournamentState.winner_team.name;
@@ -1266,6 +1375,14 @@ export default {
                 const names = this.newTournament.human_names || [];
                 while (names.length < c) names.push('');
                 this.newTournament.human_names = names.slice(0, c);
+            }
+        }
+    },
+    directives: {
+        // Auto-focus directive for team name input
+        focus: {
+            inserted: function (el) {
+                el.focus();
             }
         }
     }

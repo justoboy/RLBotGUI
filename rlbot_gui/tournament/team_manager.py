@@ -18,6 +18,18 @@ from rlbot_gui.tournament.bracket_generator import (
 VALID_TEAM_SIZES = (1, 2, 3, 4, 5)
 MAX_PARTICIPANTS_PER_TEAM = 5  # Rocket League has 5 kickoff spawns per side (max 5v5)
 
+# Phase 4: Random team names.
+# 15 descriptors x 15 nouns = 225 unique combinations (well over the 100+ requirement).
+# Pattern: "<Descriptor> <Noun>" (e.g., "Raging Wolves", "Soaring Ravens").
+TEAM_NAME_DESCRIPTORS = (
+    'Blue', 'Red', 'Golden', 'Silver', 'Dark', 'Raging', 'Soaring', 'Fierce',
+    'Swift', 'Iron', 'Crimson', 'Shadow', 'Thunder', 'Mystic', 'Blazing'
+)
+TEAM_NAME_NOUNS = (
+    'Eagles', 'Ravens', 'Wolves', 'Tigers', 'Dragons', 'Knights', 'Titans',
+    'Phantoms', 'Vipers', 'Comets', 'Storms', 'Rockets', 'Falcons', 'Bears', 'Serpents'
+)
+
 
 def _new_team_id() -> str:
     return 'T' + uuid.uuid4().hex[:8]
@@ -78,8 +90,11 @@ def form_teams_random(participants: List[Participant], team_size: int, allow_dup
     shuffled = list(participants)
     random.shuffle(shuffled)
     if allow_duplicates:
-        return _chunk_into_duplicate_teams(shuffled, team_size)
-    return _chunk_into_teams(shuffled, team_size)
+        teams = _chunk_into_duplicate_teams(shuffled, team_size)
+    else:
+        teams = _chunk_into_teams(shuffled, team_size)
+    assign_random_team_names(teams)
+    return teams
 
 
 def form_teams_seeded(participants: List[Participant], team_size: int, allow_duplicates: bool = False) -> List[Team]:
@@ -111,6 +126,7 @@ def form_teams_seeded(participants: List[Participant], team_size: int, allow_dup
                 participant_type=p.participant_type,
                 bot_config=p.bot_config
             ) for _ in range(team_size)]
+        assign_random_team_names(teams)
         return teams
 
     num_teams = len(ordered) // team_size
@@ -133,6 +149,7 @@ def form_teams_seeded(participants: List[Participant], team_size: int, allow_dup
         if index % num_teams == 0:
             direction *= -1
 
+    assign_random_team_names(teams)
     return teams
 
 
@@ -152,6 +169,7 @@ def form_teams_manual(assignment: List[List[Participant]], team_size: int) -> Li
             name=_team_name(i),
             participants=list(members)
         ))
+    assign_random_team_names(teams)
     return teams
 
 
@@ -190,6 +208,63 @@ def rename_teams(teams: List[Team], names: List[str]) -> None:
     for i, team in enumerate(teams):
         if i < len(names) and names[i]:
             team.name = names[i]
+
+
+def generate_team_names(count: int, exclude_names: Optional[List[str]] = None) -> List[str]:
+    """
+    Generate ``count`` unique random team names using the descriptor+noun pool.
+
+    Names follow the pattern "<Descriptor> <Noun>" (e.g., "Raging Wolves").
+    The pool contains 15 x 15 = 225 combinations, comfortably exceeding the
+    100+ requirement.
+
+    Args:
+        count: Number of unique names to generate.
+        exclude_names: Optional iterable of names that must NOT be reused
+            (e.g., names already assigned to other teams, so a re-randomize
+            of a single team does not collide with its siblings).
+
+    Returns:
+        A list of ``count`` unique name strings.
+
+    Raises:
+        ValueError: If ``count`` exceeds the number of available (non-excluded)
+            combinations.
+    """
+    if count < 0:
+        raise ValueError(f"count must be >= 0, got {count}")
+    if count == 0:
+        return []
+
+    excluded = {n.strip().lower() for n in (exclude_names or []) if n and n.strip()}
+
+    # Build the full pool of unique combinations.
+    pool = [f"{d} {n}" for d in TEAM_NAME_DESCRIPTORS for n in TEAM_NAME_NOUNS]
+    available = [name for name in pool if name.lower() not in excluded]
+
+    if len(available) < count:
+        raise ValueError(
+            f"Cannot generate {count} unique team names: only {len(available)} "
+            f"combinations remain after excluding {len(excluded)} name(s)"
+        )
+
+    return random.sample(available, count)
+
+
+def assign_random_team_names(teams: List[Team]) -> None:
+    """
+    Assign a unique random name to every team in-place.
+
+    Each team gets a distinct name drawn from the descriptor+noun pool.
+    Existing names are excluded from the pool so that re-randomizing the
+    whole set never produces a duplicate within the tournament.
+    """
+    if not teams:
+        return
+    existing = [t.name for t in teams if t.name and t.name.strip()]
+    names = generate_team_names(len(teams), exclude_names=existing)
+    for team, name in zip(teams, names):
+        team.name = name
 
 
 def generate_team_bracket(

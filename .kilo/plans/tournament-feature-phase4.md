@@ -52,7 +52,7 @@ This plan outlines Phase 4 features for the RLBotGUI tournament system, building
 | Phase 1 | ✅ Complete | 1v1 single elimination, import/export, basic bracket |
 | Phase 2 | ✅ Complete | Team sizes 2v2-5v5, double elimination, round robin, multi-human |
 | Phase 3 | ✅ Complete | LAN workflow, templates, statistics, bracket visualization, team balance |
-| Phase 4 | ⬜ Planned | Swiss format, auto-start, team names, manual pairing, match history |
+| Phase 4 | 🟢 In Progress | Swiss format, auto-start, team names ✅, manual pairing, match history |
 
 ---
 
@@ -166,16 +166,16 @@ class SwissTiebreakerSettings:
 
 ---
 
-### 4. Random Team Names
+### 4. Random Team Names ✅ IMPLEMENTED
 
 **Description**: Generate creative team names by combining descriptors and nouns instead of "Team A, Team B".
 
 **Key Requirements**:
-- **Generation timing**: During team formation, with option to re-randomize
-- **Custom name override**: Users can edit auto-generated names
-- **Name pool**: 100+ combinations (descriptor + noun pattern)
-- **Uniqueness**: All team names unique within tournament
-- **Pattern**: Descriptor + Noun (e.g., "Blue Eagles", "Raging Bots", "Soaring Ravens")
+- **Generation timing**: During team formation, with option to re-randomize ✅
+- **Custom name override**: Users can edit auto-generated names ✅
+- **Name pool**: 100+ combinations (descriptor + noun pattern) ✅
+- **Uniqueness**: All team names unique within tournament ✅
+- **Pattern**: Descriptor + Noun (e.g., "Blue Eagles", "Raging Bots", "Soaring Ravens") ✅
 
 **Name Pool Structure**:
 ```python
@@ -185,13 +185,21 @@ NOUNS = ['Eagles', 'Bots', 'Ravens', 'Wolves', 'Tigers', 'Dragons', 'Knights', '
 ```
 
 **UI Changes**:
-- Team formation screen: "Randomize Team Names" button
-- Team name fields editable after generation
-- Re-randomize option for individual teams or all teams
+- Team formation screen: "Randomize Team Names" button ✅
+- Team name fields editable after generation ✅
+- Re-randomize option for individual teams or all teams ✅
 
-**Files to Modify**:
-- `rlbot_gui/tournament/team_manager.py` - Add `generate_team_names()` function
-- `rlbot_gui/gui/js/tournament-vue.js` - Add team name randomization UI
+**Files Modified**:
+- `rlbot_gui/tournament/team_manager.py` - Added `generate_team_names()` function ✅
+- `rlbot_gui/tournament/tournament_runner.py` - Added `tournament_randomize_team_names()` and `tournament_rename_team()` Eel functions ✅
+- `rlbot_gui/gui/js/tournament-vue.js` - Added team name randomization UI and methods ✅
+- `rlbot_gui/gui/tournament-templates/active.html` - Added Randomize Names button and inline editable team names ✅
+
+**Implementation Notes**:
+- Fixed double-save bug using `_handlingEnter` flag to prevent blur handler from firing twice when Enter is pressed
+- Names are generated during team formation and can be re-randomized at any time during the tournament
+- Uniqueness is enforced within the tournament context
+- Inline editing supports both Enter key and click-away to save
 
 ---
 
@@ -386,18 +394,25 @@ const MUTATOR_PRESETS = {
 - [ ] Manual override cancels timer
 - [ ] Timer intervals (10s, 30s, 60s, 120s)
 
+### Random Team Names ✅
+- [x] 100+ unique combinations
+- [x] Re-randomize all teams
+- [x] Re-randomize individual team
+- [x] Custom name override
+- [x] Uniqueness enforcement
+
 ### Start Match Button
 - [ ] Match selection highlight
 - [ ] Button enabled/disabled state
 - [ ] Enter key shortcut
 - [ ] Only one match selectable
 
-### Random Team Names
-- [ ] 100+ unique combinations
-- [ ] Re-randomize all teams
-- [ ] Re-randomize individual team
-- [ ] Custom name override
-- [ ] Uniqueness enforcement
+### Random Team Names ✅
+- [x] 100+ unique combinations
+- [x] Re-randomize all teams
+- [x] Re-randomize individual team
+- [x] Custom name override
+- [x] Uniqueness enforcement
 
 ### Manual Team Pairing
 - [ ] Pair two participants

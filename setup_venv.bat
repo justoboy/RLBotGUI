@@ -95,6 +95,54 @@ if exist "%REQUIREMENTS_FILE%" (
     echo Skipping requirements installation.
 )
 
+REM Generate flatbuffer files for rlbot
+echo.
+echo Generating flatbuffer files for rlbot...
+set "RLBOT_FORK_DIR=%~dp0rlbot-fork"
+if not exist "%RLBOT_FORK_DIR%" (
+    echo Cloning rlbot fork...
+    git clone https://github.com/justoboy/RLBot.git "%RLBOT_FORK_DIR%" --depth 1
+)
+
+cd /d "%RLBOT_FORK_DIR%"
+call setup.bat
+if errorlevel 1 (
+    echo ERROR: Failed to generate flatbuffer files
+    pause
+    exit /b 1
+)
+
+REM Copy generated flatbuffer files to venv
+echo.
+echo Copying generated flatbuffer files to venv...
+set "GENERATED_FLAT_DIR=%RLBOT_FORK_DIR%\src\generated\python\rlbot\flat"
+set "RLBOT_MESSAGES_FLAT_DIR=%VENV_DIR%\Lib\site-packages\rlbot\messages\flat"
+
+if not exist "%GENERATED_FLAT_DIR%" (
+    echo ERROR: Generated flatbuffer directory not found at %GENERATED_FLAT_DIR%
+    pause
+    exit /b 1
+)
+
+if not exist "%RLBOT_MESSAGES_FLAT_DIR%" (
+    mkdir "%RLBOT_MESSAGES_FLAT_DIR%"
+)
+
+xcopy /E /I /Y "%GENERATED_FLAT_DIR%" "%RLBOT_MESSAGES_FLAT_DIR%"
+if errorlevel 1 (
+    echo ERROR: Failed to copy flatbuffer files
+    pause
+    exit /b 1
+)
+
+echo Flatbuffer files copied successfully!
+
+REM Clean up fork directory (optional - keep for debugging)
+echo.
+echo Cleaning up temporary fork directory...
+cd /d "%~dp0"
+rmdir /s /q "%RLBOT_FORK_DIR%"
+
 echo.
 echo ========================================
 echo Setup complete!

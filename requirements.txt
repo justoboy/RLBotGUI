@@ -12,3 +12,7 @@ PyQt5
 # Pin websockets to a version compatible with rlbot's matchcomms server
 # websockets 10.x+ removed the deprecated `loop` parameter
 websockets<10.0.0
+
+# Pin setuptools to a version compatible with rlbot
+# rlbot relies on pkg_resources which was deprecated in 80.0+ and removed in 82.0+
+setuptools<80.0.0

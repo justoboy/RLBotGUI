@@ -85,6 +85,13 @@ export default {
             // Phase 4: Random team names
             editingTeamName: -1,    // Index of team being edited, -1 if none
             _handlingEnter: false,  // Internal flag to prevent double-save on Enter
+            // Phase 4: Seeding Editor
+            seedingOrder: [],           // Current seeding order of participants
+            selectedSeedingSwap: -1,    // Index of selected participant for swap
+            // Phase 4: Manual Team Pairing
+            manualPairings: [],         // List of {participant_id1, participant_id2} objects
+            selectedPairingParticipants: [],  // IDs of currently selected participants
+            pairingWarnings: [],        // Warnings about pairing conflicts
         };
     },
     computed: {
@@ -1324,6 +1331,235 @@ export default {
                 this.loadTemplates();
             } catch (error) {
                 console.error('Error deleting template:', error);
+            }
+        },
+
+        // ------------------------------------------------------------------
+        // Phase 4: Seeding Editor
+        // ------------------------------------------------------------------
+        async loadSeedingOrder() {
+            if (!this.tournamentState) return;
+            try {
+                const result = await eel.tournament_get_current_seeding()();
+                this.seedingOrder = JSON.parse(result) || [];
+            } catch (error) {
+                console.error('Error loading seeding order:', error);
+                this.seedingOrder = [];
+            }
+        },
+
+        handleSeedingClick(index) {
+            if (this.selectedSeedingSwap === -1) {
+                // First click: select this participant
+                this.selectedSeedingSwap = index;
+            } else if (this.selectedSeedingSwap === index) {
+                // Click same participant: deselect
+                this.selectedSeedingSwap = -1;
+            } else {
+                // Second click: swap with selected
+                this.performSeedingSwap(this.selectedSeedingSwap, index);
+                this.selectedSeedingSwap = -1;
+            }
+        },
+
+        async performSeedingSwap(idx1, idx2) {
+            const p1 = this.seedingOrder[idx1];
+            const p2 = this.seedingOrder[idx2];
+            if (!p1 || !p2) return;
+
+            try {
+                const result = await eel.tournament_swap_seeds(p1.participant_id, p2.participant_id)();
+                const state = JSON.parse(result);
+                if (state.error) {
+                    alert('Error swapping seeds: ' + state.error);
+                } else {
+                    this.tournamentState = state;
+                    await this.loadSeedingOrder();
+                }
+            } catch (error) {
+                console.error('Error swapping seeds:', error);
+                alert('Error swapping seeds: ' + error);
+            }
+        },
+
+        async randomizeSeedingFromEditor() {
+            try {
+                const result = await eel.tournament_randomize_seeding()();
+                const state = JSON.parse(result);
+                if (state.error) {
+                    alert('Error randomizing seeding: ' + state.error);
+                } else {
+                    this.tournamentState = state;
+                    await this.loadSeedingOrder();
+                }
+            } catch (error) {
+                console.error('Error randomizing seeding:', error);
+                alert('Error randomizing seeding: ' + error);
+            }
+        },
+
+        openSeedingEditor() {
+            this.loadSeedingOrder();
+            this.selectedSeedingSwap = -1;
+            this.$nextTick(() => {
+                this.$bvModal.show('seeding-editor-modal');
+            });
+        },
+
+        closeSeedingEditor() {
+            this.$bvModal.hide('seeding-editor-modal');
+        },
+
+        // ------------------------------------------------------------------
+        // Phase 4: Manual Team Pairing
+        // ------------------------------------------------------------------
+        openManualPairingModal() {
+            this.manualPairings = [];
+            this.selectedPairingParticipants = [];
+            this.pairingWarnings = [];
+            this.$nextTick(() => {
+                this.$bvModal.show('manual-pairing-modal');
+            });
+        },
+
+        closeManualPairingModal() {
+            this.$bvModal.hide('manual-pairing-modal');
+        },
+
+        togglePairingSelection(participant) {
+            const idx = this.selectedPairingParticipants.indexOf(participant.participant_id);
+            if (idx >= 0) {
+                // Deselect
+                this.selectedPairingParticipants.splice(idx, 1);
+            } else {
+                // Select (max 2)
+                if (this.selectedPairingParticipants.length < 2) {
+                    this.selectedPairingParticipants.push(participant.participant_id);
+                } else {
+                    // Replace the first selection
+                    this.selectedPairingParticipants = [participant.participant_id];
+                }
+            }
+        },
+
+        isParticipantAlreadyPaired(participantId) {
+            return this.manualPairings.some(
+                p => p.participant_id1 === participantId || p.participant_id2 === participantId
+            );
+        },
+
+        getParticipantName(participantId) {
+            const p = this.tournamentState?.participants?.find(p => p.participant_id === participantId);
+            return p ? p.name : participantId;
+        },
+
+        addPairing() {
+            if (this.selectedPairingParticipants.length !== 2) return;
+
+            const pair = {
+                participant_id1: this.selectedPairingParticipants[0],
+                participant_id2: this.selectedPairingParticipants[1]
+            };
+
+            // Remove any existing pairings involving these participants
+            this.manualPairings = this.manualPairings.filter(
+                p => p.participant_id1 !== pair.participant_id1 &&
+                     p.participant_id2 !== pair.participant_id1 &&
+                     p.participant_id1 !== pair.participant_id2 &&
+                     p.participant_id2 !== pair.participant_id2
+            );
+
+            // Add the new pairing
+            this.manualPairings.push(pair);
+
+            // Clear selection
+            this.selectedPairingParticipants = [];
+
+            // Update warnings
+            this.updatePairingWarnings();
+        },
+
+        removePairing(index) {
+            this.manualPairings.splice(index, 1);
+            this.updatePairingWarnings();
+        },
+
+        clearPairings() {
+            this.manualPairings = [];
+            this.selectedPairingParticipants = [];
+            this.pairingWarnings = [];
+        },
+
+        updatePairingWarnings() {
+            this.pairingWarnings = [];
+
+            // Check for team size conflicts
+            const teamSize = this.tournamentState?.team_size || 1;
+
+            // Count participants in each pairing group
+            const groupSizes = {};
+            for (const pair of this.manualPairings) {
+                if (!groupSizes[pair.participant_id1]) groupSizes[pair.participant_id1] = new Set();
+                if (!groupSizes[pair.participant_id2]) groupSizes[pair.participant_id2] = new Set();
+                groupSizes[pair.participant_id1].add(pair.participant_id1);
+                groupSizes[pair.participant_id1].add(pair.participant_id2);
+                groupSizes[pair.participant_id2].add(pair.participant_id1);
+                groupSizes[pair.participant_id2].add(pair.participant_id2);
+            }
+
+            // Find connected components
+            const visited = new Set();
+            for (const pid of Object.keys(groupSizes)) {
+                if (visited.has(pid)) continue;
+
+                const component = new Set();
+                const stack = [pid];
+                while (stack.length > 0) {
+                    const current = stack.pop();
+                    if (visited.has(current)) continue;
+                    visited.add(current);
+                    component.add(current);
+                    for (const other of groupSizes[current] || []) {
+                        if (!visited.has(other)) {
+                            stack.push(other);
+                        }
+                    }
+                }
+
+                if (component.size > teamSize) {
+                    this.pairingWarnings.push(
+                        `Group of ${component.size} participants exceeds team size (${teamSize}). ` +
+                        `Please reduce pairings.`
+                    );
+                }
+            }
+        },
+
+        get canFormTeamsWithPairings() {
+            return this.tournamentState?.team_size > 1 &&
+                   this.tournamentState?.participants?.length > 0 &&
+                   this.pairingWarnings.length === 0;
+        },
+
+        async formTeamsWithPairings() {
+            if (!this.canFormTeamsWithPairings) return;
+
+            try {
+                const result = await eel.tournament_form_teams_with_pairings(
+                    JSON.stringify(this.manualPairings),
+                    '[]'  // No custom names for now
+                )();
+                const state = JSON.parse(result);
+                if (state.error) {
+                    alert('Error forming teams: ' + state.error);
+                } else {
+                    this.tournamentState = state;
+                    this.$bvModal.hide('manual-pairing-modal');
+                    this.refreshTeamBalance();
+                }
+            } catch (error) {
+                console.error('Error forming teams:', error);
+                alert('Error forming teams: ' + error);
             }
         }
     },

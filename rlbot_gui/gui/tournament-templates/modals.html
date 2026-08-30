@@ -203,6 +203,156 @@
     </b-form>
 </b-modal>
 
+<!-- Seeding Editor Modal -->
+<b-modal id="seeding-editor-modal" title="Seeding Editor" centered size="lg" hide-footer>
+    <div class="seeding-editor-container">
+        <p class="text-muted small">
+            <b-icon icon="info-circle"></b-icon>
+            Click a participant to select, then click another to swap their positions.
+            Use "Randomize" to shuffle the order.
+        </p>
+        
+        <div class="seeding-list">
+            <div 
+                v-for="(participant, index) in seedingOrder" 
+                :key="participant.participant_id"
+                class="seeding-item"
+                :class="{ 'selected': selectedSeedingSwap === index }"
+                @click="handleSeedingClick(index)"
+            >
+                <span class="seeding-rank">#{{ index + 1 }}</span>
+                <b-icon :icon="participant.participant_type === 'human' ? 'person' : 'robot'" font-scale="0.9"></b-icon>
+                <span class="seeding-name">{{ participant.name }}</span>
+                <span v-if="selectedSeedingSwap === index" class="seeding-action">
+                    (click another to swap)
+                </span>
+            </div>
+        </div>
+        
+        <div class="seeding-actions">
+            <b-button @click="randomizeSeedingFromEditor" variant="outline-primary" size="sm">
+                <b-icon icon="shuffle"></b-icon> Randomize
+            </b-button>
+            <div class="ml-auto">
+                <b-button @click="closeSeedingEditor" variant="secondary" size="sm">
+                    Close
+                </b-button>
+            </div>
+        </div>
+    </div>
+</b-modal>
+
+<!-- Manual Team Pairing Modal -->
+<b-modal id="manual-pairing-modal" title="Manual Team Pairing" centered size="xl" hide-footer>
+    <div class="manual-pairing-container">
+        <p class="text-muted small">
+            <b-icon icon="info-circle"></b-icon>
+            Select two participants and click "Pair Together" to force them onto the same team.
+            After pairing, click "Auto-Form Remaining Teams" to complete the teams.
+        </p>
+        
+        <div class="pairing-info">
+            <span class="text-muted">Team Size: <strong>{{ tournamentState?.team_size || 1 }}</strong></span>
+            <span class="text-muted ml-3">Total Participants: <strong>{{ totalParticipants }}</strong></span>
+            <span class="text-muted ml-3">Expected Teams: <strong>{{ Math.ceil(totalParticipants / (tournamentState?.team_size || 1)) }}</strong></span>
+        </div>
+        
+        <div class="pairing-content">
+            <!-- Participant List -->
+            <div class="pairing-participants">
+                <h6>Select Participants to Pair:</h6>
+                <div class="pairing-list">
+                    <div 
+                        v-for="(participant, index) in tournamentState?.participants || []" 
+                        :key="participant.participant_id"
+                        class="pairing-item"
+                        :class="{ 
+                            'selected': selectedPairingParticipants.includes(participant.participant_id),
+                            'paired': isParticipantAlreadyPaired(participant.participant_id)
+                        }"
+                        @click="togglePairingSelection(participant)"
+                    >
+                        <b-icon :icon="participant.participant_type === 'human' ? 'person' : 'robot'" font-scale="0.8"></b-icon>
+                        <span class="pairing-name">{{ participant.name }}</span>
+                        <span v-if="isParticipantAlreadyPaired(participant.participant_id)" class="paired-badge">
+                            <b-icon icon="check-circle" variant="success"></b-icon>
+                        </span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Pairing Actions -->
+            <div class="pairing-actions-section">
+                <div class="selected-pairing-display">
+                    <h6>Selected for Pairing:</h6>
+                    <div class="selected-pairing-list">
+                        <span v-for="pid in selectedPairingParticipants" :key="pid" class="selected-pairing-item">
+                            {{ getParticipantName(pid) }}
+                        </span>
+                        <span v-if="selectedPairingParticipants.length === 0" class="text-muted small">
+                            None selected
+                        </span>
+                    </div>
+                </div>
+                
+                <div class="pairing-button-row">
+                    <b-button 
+                        @click="addPairing" 
+                        variant="primary" 
+                        size="sm"
+                        :disabled="selectedPairingParticipants.length !== 2"
+                    >
+                        <b-icon icon="people"></b-icon> Pair Together
+                    </b-button>
+                    <b-button @click="clearPairings" variant="outline-danger" size="sm">
+                        <b-icon icon="x-circle"></b-icon> Clear All Pairings
+                    </b-button>
+                </div>
+            </div>
+            
+            <!-- Current Pairings -->
+            <div class="current-pairings-section" v-if="manualPairings.length > 0">
+                <h6>Current Pairings:</h6>
+                <div class="current-pairings-list">
+                    <div v-for="(pair, idx) in manualPairings" :key="idx" class="current-pairing-item">
+                        <b-icon icon="people-fill" variant="primary"></b-icon>
+                        <span>{{ getParticipantName(pair.participant_id1) }}</span>
+                        <span class="pairing-separator">&</span>
+                        <span>{{ getParticipantName(pair.participant_id2) }}</span>
+                        <b-button @click="removePairing(idx)" variant="link" size="sm" class="p-0">
+                            <b-icon icon="x-lg"></b-icon>
+                        </b-button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="pairing-footer">
+            <b-alert 
+                v-if="pairingWarnings.length > 0" 
+                show 
+                variant="warning" 
+                class="mb-2"
+            >
+                <div v-for="(warning, idx) in pairingWarnings" :key="idx">
+                    <b-icon icon="exclamation-triangle"></b-icon> {{ warning }}
+                </div>
+            </b-alert>
+            
+            <b-button 
+                @click="formTeamsWithPairings" 
+                variant="success"
+                :disabled="!canFormTeamsWithPairings"
+            >
+                <b-icon icon="people-fill"></b-icon> Auto-Form Remaining Teams
+            </b-button>
+            <b-button @click="closeManualPairingModal" variant="secondary">
+                Cancel
+            </b-button>
+        </div>
+    </div>
+</b-modal>
+
 <!-- Match Result Modal -->
 <b-modal id="match-result-modal" title="Match Result" centered hide-footer body-modal>
     <div v-if="currentMatch">

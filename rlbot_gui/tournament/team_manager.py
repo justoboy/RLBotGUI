@@ -398,3 +398,160 @@ def team_balance_report(teams: List[Team]) -> dict:
         'spread': spread,
         'strengths': strengths
     }
+
+
+def pair_participants(
+    participants: List[Participant],
+    pairings: List[Tuple[str, str]],
+    team_size: int
+) -> Tuple[List[List[Participant]], List[str]]:
+    """
+    Create team assignments based on manual pairings.
+
+    Args:
+        participants: Full list of participants.
+        pairings: List of (participant_id1, participant_id2) tuples indicating
+            which participants must be on the same team.
+        team_size: Number of participants per team.
+
+    Returns:
+        (assignments, errors) where assignments is a list of participant lists
+        (each inner list is a team), and errors contains any error messages.
+
+    The algorithm:
+        1. Build a graph of pairings (each edge means two participants must be together).
+        2. Find connected components (each component is a group that must stay together).
+        3. If any component exceeds team_size, return an error.
+        4. Assign each component to a team slot.
+        5. Fill remaining slots with unpaired participants.
+    """
+    errors = []
+
+    # Build participant lookup
+    by_id = {p.participant_id: p for p in participants}
+
+    # Build adjacency list for pairings
+    from collections import defaultdict
+    adj = defaultdict(set)
+    for pid1, pid2 in pairings:
+        if pid1 not in by_id:
+            errors.append(f"Participant '{pid1}' not found in participant pool")
+            continue
+        if pid2 not in by_id:
+            errors.append(f"Participant '{pid2}' not found in participant pool")
+            continue
+        adj[pid1].add(pid2)
+        adj[pid2].add(pid1)
+
+    # Find connected components (groups of participants that must be together)
+    visited = set()
+    components = []
+
+    def dfs(pid: str) -> List[str]:
+        """Return all participant IDs in the same component."""
+        stack = [pid]
+        component = []
+        while stack:
+            curr = stack.pop()
+            if curr in visited:
+                continue
+            visited.add(curr)
+            component.append(curr)
+            for neighbor in adj[curr]:
+                if neighbor not in visited:
+                    stack.append(neighbor)
+        return component
+
+    for pid in by_id:
+        if pid not in visited and pid in adj:
+            comp = dfs(pid)
+            if len(comp) > team_size:
+                errors.append(
+                    f"Group of {len(comp)} participants exceeds team size ({team_size}). "
+                    f"Please reduce pairings or increase team size."
+                )
+            else:
+                components.append(comp)
+
+    # Build assignments from components
+    assignments = []
+    used = set()
+
+    for comp in components:
+        team_members = [by_id[pid] for pid in comp]
+        assignments.append(team_members)
+        used.update(comp)
+
+    # Add remaining unpaired participants as individual teams (to be filled later)
+    remaining = [p for p in participants if p.participant_id not in used]
+
+    return assignments, errors, remaining
+
+
+def form_teams_with_manual_pairings(
+    participants: List[Participant],
+    pairings: List[Tuple[str, str]],
+    team_size: int,
+    allow_duplicates: bool = False
+) -> Tuple[List[Team], List[str]]:
+    """
+    Form teams from participants with manual pairings.
+
+    Args:
+        participants: Full list of participants.
+        pairings: List of (participant_id1, participant_id2) tuples.
+        team_size: Number of participants per team.
+        allow_duplicates: If True, each unique participant becomes one team.
+
+    Returns:
+        (teams, errors) where teams is the list of formed teams,
+        and errors contains any error messages.
+    """
+    if allow_duplicates:
+        # In duplicate mode, pairings don't apply (each participant is one team)
+        teams = form_teams_random(participants, team_size, allow_duplicates=True)
+        return teams, []
+
+    # Validate team size
+    if len(participants) % team_size != 0:
+        missing = team_size - (len(participants) % team_size)
+        return [], [
+            f"Participant count ({len(participants)}) is not divisible by team size "
+            f"({team_size}). Add {missing} more participant(s) to form full teams."
+        ]
+
+    # Get paired groups and remaining participants
+    assignments, errors, remaining = pair_participants(participants, pairings, team_size)
+
+    if errors:
+        return [], errors
+
+    # Fill remaining slots with unpaired participants
+    # Group remaining into teams of team_size
+    remaining_teams = []
+    for i in range(0, len(remaining), team_size):
+        chunk = remaining[i:i + team_size]
+        if len(chunk) == team_size:
+            remaining_teams.append(chunk)
+
+    # Combine all assignments
+    all_assignments = assignments + remaining_teams
+
+    # Create Team objects
+    teams = []
+    for i, members in enumerate(all_assignments):
+        if len(members) != team_size:
+            errors.append(
+                f"Team {i + 1} has {len(members)} members, expected {team_size}"
+            )
+            continue
+        teams.append(Team(
+            team_id=_new_team_id(),
+            name=_team_name(i),
+            participants=list(members)
+        ))
+
+    if teams:
+        assign_random_team_names(teams)
+
+    return teams, errors

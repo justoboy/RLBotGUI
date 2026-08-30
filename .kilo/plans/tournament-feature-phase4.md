@@ -52,7 +52,7 @@ This plan outlines Phase 4 features for the RLBotGUI tournament system, building
 | Phase 1 | ✅ Complete | 1v1 single elimination, import/export, basic bracket |
 | Phase 2 | ✅ Complete | Team sizes 2v2-5v5, double elimination, round robin, multi-human |
 | Phase 3 | ✅ Complete | LAN workflow, templates, statistics, bracket visualization, team balance |
-| Phase 4 | 🟢 In Progress | Swiss format, auto-start, team names ✅, manual pairing, match history |
+| Phase 4 | 🟢 In Progress | Swiss format, auto-start, team names ✅, manual pairing ✅, seeding editor ✅, match history |
 
 ---
 
@@ -203,30 +203,39 @@ NOUNS = ['Eagles', 'Bots', 'Ravens', 'Wolves', 'Tigers', 'Dragons', 'Knights', '
 
 ---
 
-### 5. Manual Team Pairing
+### 5. Manual Team Pairing ✅ IMPLEMENTED
 
 **Description**: Allow users to manually specify which participants must be on the same team before auto-forming remaining teams.
 
 **Key Requirements**:
-- **Pairing mechanism**: Click two participants, then "Pair Together" button
+- **Pairing mechanism**: Click two participants, then "Pair Together" button ✅
 - **Conflict handling**:
-  - If participant already paired, move them to new team
-  - If team at capacity, show warning and prevent pairing
-- **Auto-formation**: After manual pairing, auto-form remaining teams with unpaired participants
-- **UI placement**: Separate "Manual Pairing" tab/page in team formation flow
+  - If participant already paired, move them to new team ✅
+  - If team at capacity, show warning and prevent pairing ✅
+- **Auto-formation**: After manual pairing, auto-form remaining teams with unpaired participants ✅
+- **UI placement**: Separate modal accessible from the team panel
 
 **UI Changes**:
-- Team formation screen with tabs: "Random", "Seeded", "Manual Pairing"
-- Manual Pairing tab:
+- Manual Pairing modal with:
   - Participant list with selection state
-  - "Pair Selected" button (enabled when 2 participants selected)
+  - "Pair Together" button (enabled when 2 participants selected)
   - Visual indication of paired participants
   - "Auto-Form Remaining Teams" button
   - Team size limit warnings
+  - Current pairings list with remove option
 
-**Files to Modify**:
-- `rlbot_gui/tournament/team_manager.py` - Add `pair_participants()` and `form_teams_with_pairs()` functions
-- `rlbot_gui/gui/js/tournament-vue.js` - Add manual pairing UI components
+**Files Modified**:
+- `rlbot_gui/tournament/team_manager.py` - Added `pair_participants()` and `form_teams_with_manual_pairings()` functions ✅
+- `rlbot_gui/gui/js/tournament-vue.js` - Added manual pairing UI methods ✅
+- `rlbot_gui/gui/tournament-templates/modals.html` - Added manual pairing modal ✅
+- `rlbot_gui/gui/tournament-templates/active.html` - Added "Manual Pairing" button ✅
+- `rlbot_gui/gui/css/tournament.css` - Added manual pairing styles ✅
+
+**Implementation Notes**:
+- Connected components algorithm groups paired participants
+- Warnings shown when a group exceeds team size
+- Remaining unpaired participants are automatically grouped into teams
+- Pairings are validated before forming teams
 
 ---
 
@@ -301,25 +310,34 @@ const MUTATOR_PRESETS = {
 
 ---
 
-### 8. Seeding Editor
+### 8. Seeding Editor ✅ IMPLEMENTED
 
 **Description**: Visual editor to reorder participants before team formation. Participants are randomly seeded by default, but users can adjust.
 
 **Key Requirements**:
 - **Default seeding**: Random on tournament creation
-- **Editing mechanism**: Click-to-select then pair (simpler than drag-and-drop)
-- **Timing**: After mutator settings, before bracket generation
+- **Editing mechanism**: Click-to-select then swap (simpler than drag-and-drop) ✅
+- **Timing**: Accessible from the team panel in the active tournament view
 - **Integration**: Works with manual team pairing feature
 
 **UI Changes**:
-- Seeding editor in team formation flow:
-  - Participant list with random order
-  - Click participant to select, click another to swap positions
-  - "Randomize" button to re-shuffle
-  - Proceed to team formation or manual pairing
+- Seeding editor modal with participant list showing current seed order
+- Click participant to select, click another to swap positions
+- "Randomize" button to re-shuffle
+- Accessible via "Seeding Editor" button in the team panel
 
-**Files to Modify**:
-- `rlbot_gui/gui/js/tournament-vue.js` - Add seeding editor UI
+**Files Modified**:
+- `rlbot_gui/tournament/team_manager.py` - Added `pair_participants()` and `form_teams_with_manual_pairings()` functions ✅
+- `rlbot_gui/tournament/tournament_runner.py` - Added `tournament_set_participant_seed()`, `tournament_swap_seeds()`, `tournament_get_current_seeding()`, and `tournament_form_teams_with_pairings()` Eel functions ✅
+- `rlbot_gui/gui/js/tournament-vue.js` - Added seeding editor UI methods ✅
+- `rlbot_gui/gui/tournament-templates/modals.html` - Added seeding editor modal ✅
+- `rlbot_gui/gui/tournament-templates/active.html` - Added "Seeding Editor" button ✅
+- `rlbot_gui/gui/css/tournament.css` - Added seeding editor styles ✅
+
+**Implementation Notes**:
+- Click-to-swap mechanism: first click selects a participant, second click swaps with the selected one
+- Randomize button re-shuffles the entire participant order
+- Seeding changes are persisted immediately via backend
 
 ---
 
@@ -415,10 +433,10 @@ const MUTATOR_PRESETS = {
 - [x] Uniqueness enforcement
 
 ### Manual Team Pairing
-- [ ] Pair two participants
-- [ ] Move participant from one pair to another
-- [ ] Team capacity warning
-- [ ] Auto-form remaining teams
+- [x] Pair two participants
+- [x] Move participant from one pair to another
+- [x] Team capacity warning
+- [x] Auto-form remaining teams
 
 ### Mutator Presets
 - [ ] All preset types load correctly

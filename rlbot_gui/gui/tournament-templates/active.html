@@ -59,7 +59,13 @@
             <div class="team-panel-header">
                 <h5>Teams ({{ tournamentState.team_size }}v{{ tournamentState.team_size }})</h5>
                 <div class="team-panel-actions">
-                    <b-button @click="randomizeTeamNames" variant="outline-primary" size="sm" v-if="!tournamentState.completed" title="Randomize all team names">
+                    <b-button @click="openSeedingEditor" variant="outline-primary" size="sm" v-if="!tournamentState.completed && tournamentState.team_size > 1" title="Edit participant seeding order">
+                        <b-icon icon="list-ul"></b-icon> Seeding Editor
+                    </b-button>
+                    <b-button @click="openManualPairingModal" variant="outline-primary" size="sm" v-if="!tournamentState.completed && tournamentState.team_size > 1" title="Manually pair participants into teams">
+                        <b-icon icon="people"></b-icon> Manual Pairing
+                    </b-button>
+                    <b-button @click="randomizeTeamNames" variant="outline-primary" size="sm" v-if="!tournamentState.completed" title="Randomize team names">
                         <b-icon icon="shuffle"></b-icon> Randomize Names
                     </b-button>
                     <b-button @click="reformTeams" variant="outline-primary" size="sm" v-if="!tournamentState.completed">

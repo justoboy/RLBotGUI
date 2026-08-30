@@ -1426,3 +1426,219 @@
 .bracket-round.current-round .round-title {
     color: #ffd700;
 }
+
+/* ============================================================
+   Phase 4: Seeding Editor
+   ============================================================ */
+.seeding-editor-container {
+    padding: 10px;
+}
+
+.seeding-editor-container p {
+    margin-bottom: 15px;
+}
+
+.seeding-list {
+    max-height: 300px;
+    overflow-y: auto;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 15px;
+}
+
+.seeding-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    margin-bottom: 4px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.seeding-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.seeding-item.selected {
+    background: rgba(0, 217, 255, 0.2);
+    border: 1px solid rgba(0, 217, 255, 0.5);
+}
+
+.seeding-rank {
+    font-weight: bold;
+    color: #00d9ff;
+    min-width: 35px;
+    margin-right: 10px;
+}
+
+.seeding-name {
+    flex: 1;
+    color: #fff;
+}
+
+.seeding-action {
+    font-size: 0.75rem;
+    color: #ffc107;
+    margin-left: 10px;
+}
+
+.seeding-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+}
+
+/* ============================================================
+   Phase 4: Manual Team Pairing
+   ============================================================ */
+.manual-pairing-container {
+    padding: 10px;
+}
+
+.pairing-info {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 15px;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+}
+
+.pairing-content {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.pairing-participants {
+    flex: 1;
+}
+
+.pairing-participants h6 {
+    margin-bottom: 10px;
+    color: #00d9ff;
+}
+
+.pairing-list {
+    max-height: 250px;
+    overflow-y: auto;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+    padding: 10px;
+}
+
+.pairing-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    margin-bottom: 4px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.pairing-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.pairing-item.selected {
+    background: rgba(0, 217, 255, 0.2);
+    border: 1px solid rgba(0, 217, 255, 0.5);
+}
+
+.pairing-item.paired {
+    border-left: 3px solid #28a745;
+}
+
+.pairing-name {
+    flex: 1;
+    color: #fff;
+    margin-left: 8px;
+}
+
+.paired-badge {
+    color: #28a745;
+}
+
+.pairing-actions-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.selected-pairing-display {
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+    min-height: 80px;
+}
+
+.selected-pairing-display h6 {
+    margin-bottom: 8px;
+    color: #00d9ff;
+}
+
+.selected-pairing-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.selected-pairing-item {
+    padding: 4px 10px;
+    background: rgba(0, 217, 255, 0.15);
+    border: 1px solid rgba(0, 217, 255, 0.4);
+    border-radius: 4px;
+    color: #fff;
+    font-size: 0.85rem;
+}
+
+.pairing-button-row {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+}
+
+.current-pairings-section {
+    flex: 1;
+}
+
+.current-pairings-section h6 {
+    margin-bottom: 10px;
+    color: #00d9ff;
+}
+
+.current-pairings-list {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+    padding: 10px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.current-pairing-item {
+    display: flex;
+    align-items: center;
+    padding: 6px 8px;
+    margin-bottom: 4px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+    font-size: 0.85rem;
+}
+
+.current-pairing-item .pairing-separator {
+    margin: 0 8px;
+    color: #ffc107;
+}
+
+.pairing-footer {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    align-items: center;
+}

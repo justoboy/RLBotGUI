@@ -1476,3 +1476,175 @@ def tournament_save_file_dialog(file_content: str, default_filename: str = 'tour
         return json.dumps({'success': True, 'path': file_path})
     except Exception as e:
         return json.dumps({'error': f'Failed to write file: {str(e)}'})
+
+
+# Phase 4: Seeding Editor + Manual Team Pairing
+
+@eel.expose
+def tournament_set_participant_seed(participant_id: str, new_seed: int) -> str:
+    """
+    Set the seed value for a specific participant.
+    Used by the seeding editor to reorder participants.
+
+    Args:
+        participant_id: ID of the participant to update
+        new_seed: New seed value (0-based index)
+
+    Returns:
+        JSON string of updated tournament state
+    """
+    global CURRENT_TOURNAMENT
+
+    if CURRENT_TOURNAMENT is None:
+        return json.dumps({'error': 'No tournament loaded'})
+
+    # Find the participant
+    target = None
+    for p in CURRENT_TOURNAMENT.participants:
+        if p.participant_id == participant_id:
+            target = p
+            break
+
+    if target is None:
+        return json.dumps({'error': f'Participant {participant_id} not found'})
+
+    # Reorder the participants list based on seed
+    # Remove the target and insert at the new position
+    CURRENT_TOURNAMENT.participants.remove(target)
+    CURRENT_TOURNAMENT.participants.insert(new_seed, target)
+
+    # Reassign seed values to maintain consistency
+    for i, p in enumerate(CURRENT_TOURNAMENT.participants):
+        p.seed = i
+
+    return tournament_save_state()
+
+
+@eel.expose
+def tournament_swap_seeds(participant_id1: str, participant_id2: str) -> str:
+    """
+    Swap the positions of two participants in the seeding order.
+    This is the primary operation for the click-to-swap seeding editor.
+
+    Args:
+        participant_id1: ID of first participant
+        participant_id2: ID of second participant
+
+    Returns:
+        JSON string of updated tournament state
+    """
+    global CURRENT_TOURNAMENT
+
+    if CURRENT_TOURNAMENT is None:
+        return json.dumps({'error': 'No tournament loaded'})
+
+    # Find both participants
+    p1 = None
+    p2 = None
+    idx1 = -1
+    idx2 = -1
+
+    for i, p in enumerate(CURRENT_TOURNAMENT.participants):
+        if p.participant_id == participant_id1:
+            p1 = p
+            idx1 = i
+        if p.participant_id == participant_id2:
+            p2 = p
+            idx2 = i
+
+    if p1 is None:
+        return json.dumps({'error': f'Participant {participant_id1} not found'})
+    if p2 is None:
+        return json.dumps({'error': f'Participant {participant_id2} not found'})
+
+    # Swap positions
+    CURRENT_TOURNAMENT.participants[idx1], CURRENT_TOURNAMENT.participants[idx2] = \
+        CURRENT_TOURNAMENT.participants[idx2], CURRENT_TOURNAMENT.participants[idx1]
+
+    # Reassign seed values
+    for i, p in enumerate(CURRENT_TOURNAMENT.participants):
+        p.seed = i
+
+    return tournament_save_state()
+
+
+@eel.expose
+def tournament_form_teams_with_pairings(pairings_json: str, team_names_json: str = '[]') -> str:
+    """
+    Form teams using manual pairings.
+
+    Args:
+        pairings_json: JSON array of pairing objects, each with
+            {participant_id1, participant_id2}
+        team_names_json: Optional JSON array of custom team names
+
+    Returns:
+        JSON string of updated tournament state
+    """
+    global CURRENT_TOURNAMENT
+
+    if CURRENT_TOURNAMENT is None:
+        return json.dumps({'error': 'No tournament loaded'})
+
+    if CURRENT_TOURNAMENT.team_size <= 1:
+        return json.dumps({'error': 'Manual team pairing only applies when team size > 1'})
+
+    from rlbot_gui.tournament.team_manager import form_teams_with_manual_pairings
+
+    # Parse pairings
+    try:
+        pairings_data = json.loads(pairings_json)
+        pairings = [(p['participant_id1'], p['participant_id2']) for p in pairings_data]
+    except (json.JSONDecodeError, KeyError, TypeError) as e:
+        return json.dumps({'error': f'Invalid pairings format: {str(e)}'})
+
+    # Form teams with pairings
+    teams, errors = form_teams_with_manual_pairings(
+        CURRENT_TOURNAMENT.participants,
+        pairings,
+        CURRENT_TOURNAMENT.team_size,
+        CURRENT_TOURNAMENT.allow_duplicates
+    )
+
+    if errors:
+        return json.dumps({'error': '; '.join(errors)})
+
+    # Apply custom names if provided
+    try:
+        names = json.loads(team_names_json) if team_names_json else []
+    except (json.JSONDecodeError, TypeError):
+        names = []
+    for i, team in enumerate(teams):
+        if i < len(names) and names[i]:
+            team.name = names[i]
+
+    CURRENT_TOURNAMENT.teams = teams
+
+    # Regenerate the bracket with the new teams
+    matches, losers_matches = generate_team_bracket(teams, CURRENT_TOURNAMENT.format)
+    CURRENT_TOURNAMENT.matches = matches
+    CURRENT_TOURNAMENT.losers_bracket_matches = losers_matches
+    CURRENT_TOURNAMENT.current_round = 1
+    CURRENT_TOURNAMENT.completed = False
+    CURRENT_TOURNAMENT.winner = None
+    CURRENT_TOURNAMENT.winner_team = None
+
+    return tournament_save_state()
+
+
+@eel.expose
+def tournament_get_current_seeding() -> str:
+    """
+    Get the current seeding order of participants.
+
+    Returns:
+        JSON string of participant list in current seed order
+    """
+    global CURRENT_TOURNAMENT
+
+    if CURRENT_TOURNAMENT is None:
+        return json.dumps({'error': 'No tournament loaded'})
+
+    # Return participants in current order (already sorted by seed)
+    participants_data = [p.to_dict() for p in CURRENT_TOURNAMENT.participants]
+    return json.dumps(participants_data)

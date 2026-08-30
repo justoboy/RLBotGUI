@@ -42,7 +42,10 @@ if %errorlevel% == 0 (
   pip install wheel
   pip install gevent^<22
   pip install eel
-  pip install --upgrade rlbot_gui rlbot
+  pip install --upgrade rlbot_gui
+  rem Custom RLBot fork with -noeac launch arg support.
+  rem To switch back to upstream, replace with: pip install --upgrade rlbot
+  pip install --upgrade "rlbot @ git+https://github.com/justoboy/RLBot.git#subdirectory=src/main/python"
 ) else (
   echo It looks like you're offline, skipping package upgrades.
   echo Please note that if this is your first time running RLBotGUI, an internet connection is required to properly install.

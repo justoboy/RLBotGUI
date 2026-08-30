@@ -26,6 +26,7 @@ from rlbot_gui.tournament.team_manager import (
     generate_team_names,
     assign_random_team_names
 )
+from rlbot_gui.persistence.settings import load_settings, MATCH_SETTINGS_KEY
 
 # Global state for current tournament
 CURRENT_TOURNAMENT: Optional[TournamentState] = None
@@ -674,8 +675,17 @@ def tournament_confirm_players_ready(match_id: str) -> str:
 
     bot_list = staging['bot_list']
     match_settings = dict(staging['match_settings'])
-    # Critical: inject bots into the existing lobby without tearing it down.
-    match_settings['match_behavior'] = 'Continue And Spawn'
+    # Inject bots into the existing lobby without tearing it down.
+    # Respect the user's 'Existing Match Behaviour' choice from the main GUI
+    # (saved via save_match_settings). Default to 'Continue And Spawn' when
+    # nothing is saved, since that is the only mode that injects bots into an
+    # already-hosted lobby without restarting it.
+    saved_match_settings = load_settings().value(MATCH_SETTINGS_KEY, type=dict) or {}
+    saved_behavior = saved_match_settings.get('match_behavior')
+    if saved_behavior in ('Restart If Different', 'Restart', 'Continue And Spawn'):
+        match_settings['match_behavior'] = saved_behavior
+    else:
+        match_settings['match_behavior'] = 'Continue And Spawn'
     match_settings['instant_start'] = True
 
     del STAGING_STATE[match_id]

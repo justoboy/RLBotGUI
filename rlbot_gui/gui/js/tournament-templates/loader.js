@@ -14,6 +14,7 @@
  *   tournament-templates/active.html        - active tournament view (v-else)
  *   tournament-templates/bracket-view.html  - bracket tree (inlined into active.html)
  *   tournament-templates/round-robin.html   - round robin view (inlined into active.html)
+ *   tournament-templates/swiss-view.html    - Swiss format view (inlined into active.html)
  *   tournament-templates/modals.html        - create + match-result modals
  */
 
@@ -64,14 +65,16 @@ export function buildTournamentTemplate() {
     const active = loadFragment('active', 'active.html');
     const bracketView = loadFragment('bracket-view', 'bracket-view.html');
     const roundRobin = loadFragment('round-robin', 'round-robin.html');
+    const swissView = loadFragment('swiss-view', 'swiss-view.html');
     const modals = loadFragment('modals', 'modals.html');
 
-    console.log(`[tournament-templates] Fragments loaded: landing=${landing.length}, active=${active.length}, bracketView=${bracketView.length}, roundRobin=${roundRobin.length}, modals=${modals.length}`);
+    console.log(`[tournament-templates] Fragments loaded: landing=${landing.length}, active=${active.length}, bracketView=${bracketView.length}, roundRobin=${roundRobin.length}, swissView=${swissView.length}, modals=${modals.length}`);
 
-    // Inline the bracket tree and round-robin view into the active view.
+    // Inline the bracket tree, round-robin view, and Swiss view into the active view.
     const activeAssembled = active
         .replace('{{BRACKET_VIEW}}', bracketView)
-        .replace('{{ROUND_ROBIN}}', roundRobin);
+        .replace('{{ROUND_ROBIN}}', roundRobin)
+        .replace('{{SWISS_VIEW}}', swissView);
 
     const result = `
 <div class="tournament-page noscroll-flex flex-grow-1">

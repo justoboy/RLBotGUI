@@ -52,13 +52,13 @@ This plan outlines Phase 4 features for the RLBotGUI tournament system, building
 | Phase 1 | ✅ Complete | 1v1 single elimination, import/export, basic bracket |
 | Phase 2 | ✅ Complete | Team sizes 2v2-5v5, double elimination, round robin, multi-human |
 | Phase 3 | ✅ Complete | LAN workflow, templates, statistics, bracket visualization, team balance |
-| Phase 4 | 🟢 In Progress | Swiss format, auto-start ✅, team names ✅, manual pairing ✅, seeding editor ✅, match history |
+| Phase 4 | 🟢 In Progress | Swiss format ✅, auto-start ✅, team names ✅, manual pairing ✅, seeding editor ✅, match history |
 
 ---
 
 ## Phase 4 Features
 
-### 1. Swiss Tournament Format
+### 1. Swiss Tournament Format ✅ IMPLEMENTED
 
 **Description**: A non-elimination tournament format where all participants play a fixed number of rounds. Participants are matched against opponents with similar win-loss records each round. Popular in gaming tournaments because everyone stays engaged throughout.
 
@@ -108,11 +108,23 @@ class SwissTiebreakerSettings:
   - Live standings panel showing current rankings
   - Playoff match indicator when top 2 are tied
 
-**Files to Modify**:
-- `rlbot_gui/tournament/bracket_generator.py` - Add `generate_swiss_bracket()`
-- `rlbot_gui/tournament/tournament_state.py` - Add Swiss-specific data structures
-- `rlbot_gui/tournament/tournament_runner.py` - Add Swiss match scheduling logic
-- `rlbot_gui/gui/js/tournament-vue.js` - Add Swiss UI components
+**Files Modified**:
+- `rlbot_gui/tournament/bracket_generator.py` - Added `calculate_swiss_rounds()`, `generate_swiss_round1()`, `generate_swiss_next_round()`, `calculate_swiss_standings()`, `determine_swiss_winner()` ✅
+- `rlbot_gui/tournament/tournament_state.py` - Added Swiss fields (`swiss_rounds`, `swiss_tiebreakers`, `swiss_playoff_scheduled`) + `goals_for`/`goals_against` on `Team` ✅
+- `rlbot_gui/tournament/tournament_runner.py` - Added `_handle_swiss_progression()`, `_swiss_declare_winner()`, `tournament_get_swiss_standings()` Eel function, Swiss params in `tournament_new()` ✅
+- `rlbot_gui/tournament/team_manager.py` - `generate_team_bracket()` handles 'swiss' for team modes ✅
+- `rlbot_gui/gui/js/tournament-vue.js` - Swiss format option, tiebreaker settings, `swissRounds`/`swissStandings` state, standings refresh ✅
+- `rlbot_gui/gui/tournament-templates/swiss-view.html` - New round-grouped match listing + live standings panel ✅
+- `rlbot_gui/gui/tournament-templates/modals.html` - Swiss format option + tiebreaker priority panel ✅
+- `rlbot_gui/gui/css/tournament.css` - Swiss view styling (scrollable, min-height 500px) ✅
+- `tests/test_swiss_format.py` - 41 dependency-free tests, all passing ✅
+
+**Implementation Notes**:
+- Round count = `ceil(log2(participants))`; round 1 pairs seeded order (1v2, 3v4, ...); later rounds pair by win record with rematch avoidance (fallback allows rematch when the pool is exhausted)
+- Tiebreakers are user-selectable and ordered: score differential → goals scored → head-to-head; if the top 2 are still tied, a playoff match is scheduled
+- Team-based Swiss uses stand-in participants (`participant_type: 'team'`) so the same pairing engine works for 1v1 through 5v5
+- Winner display: `winnerDisplayName` is a **computed** property (not a method) so the template renders the name string
+- Standings/statistics panels use full words (Wins, Losses, Draws, Goals For, Goals Against, Goal Difference, Win Rate)
 
 ---
 
@@ -416,12 +428,12 @@ const MUTATOR_PRESETS = {
 
 ## Testing Checklist
 
-### Swiss Format
-- [ ] Round count calculation (log2 of participants)
-- [ ] Matching algorithm (similar records, no rematches)
-- [ ] Tiebreaker ranking (all three types)
-- [ ] Playoff match when top 2 tied
-- [ ] Team sizes 1v1 through 5v5
+### Swiss Format ✅
+- [x] Round count calculation (log2 of participants)
+- [x] Matching algorithm (similar records, no rematches)
+- [x] Tiebreaker ranking (all three types)
+- [x] Playoff match when top 2 tied
+- [x] Team sizes 1v1 through 5v5
 
 ### Auto-Start ✅
 - [x] Timer countdown display

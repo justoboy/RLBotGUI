@@ -1,5 +1,5 @@
-<!-- Round Robin View (inlined into the main tournament component scope; carries v-else) -->
-<div class="round-robin-view noscroll-flex" v-else>
+<!-- Round Robin View (inlined into the main tournament component scope; carries v-else-if) -->
+<div class="round-robin-view noscroll-flex" v-else-if="tournamentState.format === 'round_robin'">
     <div class="round-robin-header">
         <h4>Round Robin Standings</h4>
     </div>

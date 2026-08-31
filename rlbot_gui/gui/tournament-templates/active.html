@@ -150,7 +150,7 @@
                               :title="`Double-click to rename`">
                             {{ team.name }}
                         </span>
-                        <span class="team-record">{{ team.wins }}W - {{ team.losses }}L</span>
+                        <span class="team-record">{{ team.wins }} Wins - {{ team.losses }} Losses</span>
                     </div>
                     <div class="team-card-members">
                         <div v-for="(p, slot) in team.participants" :key="slot" class="team-card-member">
@@ -176,7 +176,7 @@
         </div>
 
         <!-- Bracket View for Single/Double Elimination -->
-        <div class="bracket-view noscroll-flex" v-if="tournamentState.format !== 'round_robin'">
+        <div class="bracket-view noscroll-flex" v-if="tournamentState.format !== 'round_robin' && tournamentState.format !== 'swiss'">
             <div class="bracket-header">
                 <h4>{{ formatLabel }} Bracket</h4>
                 <b-button @click="randomizeSeeding" variant="outline-primary" size="sm" v-if="!tournamentState.completed">
@@ -187,8 +187,11 @@
             {{BRACKET_VIEW}}
         </div>
 
-        <!-- Round Robin View (inlined from round-robin.html, carries v-else) -->
+        <!-- Round Robin View (inlined from round-robin.html, carries v-else-if) -->
         {{ROUND_ROBIN}}
+
+        <!-- Swiss View (inlined from swiss-view.html, carries v-else) -->
+        {{SWISS_VIEW}}
 
         <!-- Statistics panel -->
         <div class="stats-panel" v-if="statsData && statsData.completed_matches > 0">
@@ -207,13 +210,13 @@
                         <th>Rank</th>
                         <th>Participant</th>
                         <th>Played</th>
-                        <th>W</th>
-                        <th>D</th>
-                        <th>L</th>
-                        <th>GF</th>
-                        <th>GA</th>
-                        <th>GD</th>
-                        <th>Win %</th>
+                        <th>Wins</th>
+                        <th>Draws</th>
+                        <th>Losses</th>
+                        <th>Goals For</th>
+                        <th>Goals Against</th>
+                        <th>Goal Difference</th>
+                        <th>Win Rate</th>
                     </tr>
                 </thead>
                 <tbody>

@@ -13,7 +13,12 @@ from rlbot_gui.tournament.tournament_state import TournamentState, Participant, 
 from rlbot_gui.tournament.bracket_generator import (
     generate_single_elimination_bracket,
     generate_double_elimination_bracket,
-    generate_round_robin_bracket
+    generate_round_robin_bracket,
+    calculate_swiss_rounds,
+    generate_swiss_round1,
+    generate_swiss_next_round,
+    calculate_swiss_standings,
+    determine_swiss_winner
 )
 from rlbot_gui.tournament.team_manager import (
     validate_team_formation,
@@ -61,17 +66,22 @@ def count_humans_in_match(match: Match) -> int:
 
 
 @eel.expose
-def tournament_new(name: str, tournament_format: str, participants_json: str, match_settings_json: str = '{}', team_size: int = 1, allow_duplicates: bool = False) -> str:
+def tournament_new(name: str, tournament_format: str, participants_json: str, match_settings_json: str = '{}', team_size: int = 1, allow_duplicates: bool = False, swiss_tiebreakers_json: str = '[]', swiss_rounds: int = 0) -> str:
     """
     Create a new tournament.
     
     Args:
         name: Tournament name
-        tournament_format: 'single_elimination', 'double_elimination', or 'round_robin'
+        tournament_format: 'single_elimination', 'double_elimination', 'round_robin', or 'swiss'
         participants_json: JSON string of participant list
         match_settings_json: JSON string of match settings (optional)
         team_size: Participants per team (1, 2, 3, 4, or 5). Default 1 (1v1).
         allow_duplicates: When True, each team member is a copy of one participant.
+        swiss_tiebreakers_json: JSON list of tiebreaker keys in priority order
+            (e.g. ['score_differential', 'goals_scored', 'head_to_head']).
+            Swiss format only.
+        swiss_rounds: Optional override for the number of Swiss rounds.
+            0 (default) = auto-calculate as ceil(log2(participants)).
     
     Returns:
         JSON string of tournament state
@@ -84,6 +94,16 @@ def tournament_new(name: str, tournament_format: str, participants_json: str, ma
     # Parse match settings
     match_settings = json.loads(match_settings_json) if match_settings_json else {}
     
+    # Parse Swiss tiebreakers
+    try:
+        swiss_tiebreakers = json.loads(swiss_tiebreakers_json) if swiss_tiebreakers_json else []
+    except (json.JSONDecodeError, TypeError):
+        swiss_tiebreakers = []
+    valid_tiebreakers = ('score_differential', 'goals_scored', 'head_to_head')
+    swiss_tiebreakers = [tb for tb in swiss_tiebreakers if tb in valid_tiebreakers]
+    if not swiss_tiebreakers:
+        swiss_tiebreakers = ['score_differential', 'goals_scored', 'head_to_head']
+    
     # Validate team size
     if team_size not in (1, 2, 3, 4, 5):
         return json.dumps({'error': f'Team size must be 1, 2, 3, 4, or 5 (got {team_size})'})
@@ -94,7 +114,25 @@ def tournament_new(name: str, tournament_format: str, participants_json: str, ma
         if not valid:
             return json.dumps({'error': error_msg})
     
+    # Validate Swiss format requirements
+    if tournament_format == 'swiss':
+        num_entities = len(participants) // team_size if team_size > 1 else len(participants)
+        if num_entities < 2:
+            return json.dumps({'error': 'Swiss format requires at least 2 participants (or 2 teams)'})
+        if num_entities % 2 != 0:
+            return json.dumps({'error': f'Swiss format requires an even number of participants/teams (got {num_entities})'})
+    
     tournament_id = str(uuid.uuid4())[:8]
+    
+    # Calculate Swiss rounds
+    if tournament_format == 'swiss':
+        num_entities = len(participants) // team_size if team_size > 1 else len(participants)
+        if swiss_rounds and swiss_rounds > 0:
+            calculated_rounds = swiss_rounds
+        else:
+            calculated_rounds = calculate_swiss_rounds(num_entities)
+    else:
+        calculated_rounds = 0
     
     CURRENT_TOURNAMENT = TournamentState(
         name=name,
@@ -103,7 +141,9 @@ def tournament_new(name: str, tournament_format: str, participants_json: str, ma
         participants=participants,
         match_settings=match_settings,
         team_size=team_size,
-        allow_duplicates=allow_duplicates
+        allow_duplicates=allow_duplicates,
+        swiss_rounds=calculated_rounds,
+        swiss_tiebreakers=swiss_tiebreakers if tournament_format == 'swiss' else []
     )
     
     if team_size > 1:
@@ -124,6 +164,9 @@ def tournament_new(name: str, tournament_format: str, participants_json: str, ma
             CURRENT_TOURNAMENT.losers_bracket_matches = losers_matches
         elif tournament_format == 'round_robin':
             matches = generate_round_robin_bracket(participants)
+            CURRENT_TOURNAMENT.matches = matches
+        elif tournament_format == 'swiss':
+            matches = generate_swiss_round1(participants)
             CURRENT_TOURNAMENT.matches = matches
     
     CURRENT_TOURNAMENT.current_round = 1
@@ -463,7 +506,8 @@ def tournament_get_state() -> Optional[str]:
     if CURRENT_TOURNAMENT is None:
         return None
     
-    return json.dumps(CURRENT_TOURNAMENT.to_dict())
+    state_dict = CURRENT_TOURNAMENT.to_dict()
+    return json.dumps(state_dict)
 
 
 # Phase 3: LAN Match Workflow state.
@@ -886,6 +930,11 @@ def tournament_record_result(match_id: str, winner_name: str, score_json: str) -
                 if losing_team is not None:
                     losing_team.losses += 1
 
+    # Swiss format: special progression logic (round-based, no advancement)
+    if CURRENT_TOURNAMENT.format == 'swiss':
+        _handle_swiss_progression(match)
+        return tournament_save_state()
+
     # Check for tournament completion
     if is_tournament_final_match(match):
         print(f"DEBUG: Match {match_id} is the final match, tournament complete!")
@@ -900,6 +949,129 @@ def tournament_record_result(match_id: str, winner_name: str, score_json: str) -
     
     # Save state
     return tournament_save_state()
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: Swiss format progression
+# ---------------------------------------------------------------------------
+
+def _swiss_get_entities() -> List[Participant]:
+    """
+    Get the entities (stand-in participants or raw participants) used for
+    Swiss pairing. In team mode, each team is represented by a stand-in
+    participant whose participant_id is the team_id.
+    """
+    global CURRENT_TOURNAMENT
+    if CURRENT_TOURNAMENT.team_size > 1 and CURRENT_TOURNAMENT.teams:
+        stand_ins = []
+        for t in CURRENT_TOURNAMENT.teams:
+            stand_ins.append(Participant(
+                name=t.name,
+                participant_id=t.team_id,
+                participant_type='team',
+                seed=0
+            ))
+        return stand_ins
+    return CURRENT_TOURNAMENT.participants
+
+
+def _swiss_attach_teams(matches: List[Match]) -> None:
+    """Attach team1/team2 data to Swiss matches in team mode."""
+    global CURRENT_TOURNAMENT
+    if CURRENT_TOURNAMENT.team_size <= 1 or not CURRENT_TOURNAMENT.teams:
+        return
+    team_by_id = {t.team_id: t for t in CURRENT_TOURNAMENT.teams}
+    for match in matches:
+        if match.participant1 and match.participant1.participant_id in team_by_id:
+            match.team1 = team_by_id[match.participant1.participant_id]
+        if match.participant2 and match.participant2.participant_id in team_by_id:
+            match.team2 = team_by_id[match.participant2.participant_id]
+
+
+def _swiss_declare_winner(winner: Participant) -> None:
+    """Set the tournament winner (and winning team in team mode)."""
+    global CURRENT_TOURNAMENT
+    CURRENT_TOURNAMENT.winner = winner
+    if CURRENT_TOURNAMENT.team_size > 1 and CURRENT_TOURNAMENT.teams:
+        for t in CURRENT_TOURNAMENT.teams:
+            if t.team_id == winner.participant_id:
+                CURRENT_TOURNAMENT.winner_team = t
+                break
+    CURRENT_TOURNAMENT.completed = True
+
+
+def _handle_swiss_progression(completed_match: Match) -> None:
+    """
+    Advance the Swiss tournament after a match completes.
+
+    Logic:
+    - If the completed match is the playoff (round > swiss_rounds), the
+      tournament is over — the winner was already recorded.
+    - Otherwise, check if all matches in the current round are complete:
+      - If more rounds remain, generate the next round.
+      - If all rounds are complete, determine the winner via tiebreakers,
+        or schedule a head-to-head playoff if the top 2 are tied.
+    """
+    global CURRENT_TOURNAMENT
+
+    if CURRENT_TOURNAMENT is None or CURRENT_TOURNAMENT.format != 'swiss':
+        return
+
+    # Playoff match completed: tournament is over.
+    if completed_match.round_num > CURRENT_TOURNAMENT.swiss_rounds:
+        print(f"DEBUG: Swiss playoff match {completed_match.match_id} complete, tournament over")
+        if completed_match.winner is not None:
+            _swiss_declare_winner(completed_match.winner)
+        return
+
+    # Check if all matches in the current round are complete.
+    round_matches = [m for m in CURRENT_TOURNAMENT.matches if m.round_num == completed_match.round_num]
+    if not all(m.completed for m in round_matches):
+        print(f"DEBUG: Swiss round {completed_match.round_num} not yet complete")
+        return
+
+    print(f"DEBUG: Swiss round {completed_match.round_num} complete")
+
+    if completed_match.round_num < CURRENT_TOURNAMENT.swiss_rounds:
+        # Generate the next round based on current records.
+        entities = _swiss_get_entities()
+        completed = [m for m in CURRENT_TOURNAMENT.matches if m.completed]
+        next_round = completed_match.round_num + 1
+        new_matches = generate_swiss_next_round(
+            entities, completed, next_round, CURRENT_TOURNAMENT.swiss_tiebreakers
+        )
+        _swiss_attach_teams(new_matches)
+        CURRENT_TOURNAMENT.matches.extend(new_matches)
+        CURRENT_TOURNAMENT.current_round = next_round
+        print(f"DEBUG: Swiss round {next_round} generated with {len(new_matches)} matches")
+    else:
+        # All rounds complete: determine winner or schedule a playoff.
+        entities = _swiss_get_entities()
+        completed = [m for m in CURRENT_TOURNAMENT.matches if m.completed]
+        result = determine_swiss_winner(entities, completed, CURRENT_TOURNAMENT.swiss_tiebreakers)
+
+        if result['playoff_needed'] and not CURRENT_TOURNAMENT.swiss_playoff_scheduled:
+            p1, p2 = result['playoff_participants']
+            playoff = Match(
+                match_id="SW_PLAYOFF",
+                round_num=CURRENT_TOURNAMENT.swiss_rounds + 1,
+                participant1=p1,
+                participant2=p2,
+                completed=False
+            )
+            _swiss_attach_teams([playoff])
+            CURRENT_TOURNAMENT.matches.append(playoff)
+            CURRENT_TOURNAMENT.swiss_playoff_scheduled = True
+            CURRENT_TOURNAMENT.current_round = CURRENT_TOURNAMENT.swiss_rounds + 1
+            print(f"DEBUG: Swiss playoff scheduled: {p1.name} vs {p2.name}")
+        else:
+            winner = result['winner']
+            if winner is not None:
+                print(f"DEBUG: Swiss winner determined: {winner.name}")
+                _swiss_declare_winner(winner)
+            else:
+                # Should not happen, but guard against it.
+                print(f"DEBUG: Swiss winner could not be determined")
 
 
 def is_tournament_final_match(match: Match) -> bool:
@@ -1077,6 +1249,9 @@ def tournament_randomize_seeding() -> str:
         CURRENT_TOURNAMENT.losers_bracket_matches = losers_matches
     elif CURRENT_TOURNAMENT.format == 'round_robin':
         matches = generate_round_robin_bracket(shuffled)
+        CURRENT_TOURNAMENT.matches = matches
+    elif CURRENT_TOURNAMENT.format == 'swiss':
+        matches = generate_swiss_round1(shuffled)
         CURRENT_TOURNAMENT.matches = matches
 
     return tournament_save_state()
@@ -1439,6 +1614,69 @@ def tournament_get_statistics() -> str:
         'winner': CURRENT_TOURNAMENT.winner.name if CURRENT_TOURNAMENT.winner else None,
         'winner_team': CURRENT_TOURNAMENT.winner_team.name if CURRENT_TOURNAMENT.winner_team else None,
         'ranked': ranked
+    })
+
+
+@eel.expose
+def tournament_get_swiss_standings() -> str:
+    """
+    Phase 4: Compute live Swiss standings with user-selected tiebreakers.
+
+    Returns:
+        JSON string with:
+          - standings: ranked list of {name, wins, losses, draws,
+            goals_for, goals_against, goal_difference, played, rank}
+          - playoff_needed: True if the top 2 are tied and a playoff is
+            required after all rounds
+          - playoff_participants: [name1, name2] when playoff_needed
+          - swiss_rounds, current_round, tiebreakers
+    """
+    global CURRENT_TOURNAMENT
+
+    if CURRENT_TOURNAMENT is None:
+        return json.dumps({'error': 'No tournament loaded'})
+
+    if CURRENT_TOURNAMENT.format != 'swiss':
+        return json.dumps({'error': 'Tournament is not in Swiss format'})
+
+    entities = _swiss_get_entities()
+    completed = [m for m in CURRENT_TOURNAMENT.matches if m.completed]
+    tiebreakers = CURRENT_TOURNAMENT.swiss_tiebreakers or ['score_differential', 'goals_scored', 'head_to_head']
+
+    standings = calculate_swiss_standings(entities, completed, tiebreakers)
+
+    # Determine whether a playoff will be needed once all rounds are done.
+    all_rounds_done = (CURRENT_TOURNAMENT.current_round > CURRENT_TOURNAMENT.swiss_rounds)
+    playoff_needed = False
+    playoff_participants = []
+    if all_rounds_done and not CURRENT_TOURNAMENT.completed:
+        result = determine_swiss_winner(entities, completed, tiebreakers)
+        playoff_needed = result['playoff_needed']
+        playoff_participants = [p.name for p in result['playoff_participants']]
+
+    return json.dumps({
+        'standings': [
+            {
+                'name': s['participant'].name,
+                'participant_id': s['participant'].participant_id,
+                'rank': s['rank'],
+                'wins': s['wins'],
+                'losses': s['losses'],
+                'draws': s['draws'],
+                'goals_for': s['goals_for'],
+                'goals_against': s['goals_against'],
+                'goal_difference': s['goal_difference'],
+                'played': s['played']
+            }
+            for s in standings
+        ],
+        'playoff_needed': playoff_needed,
+        'playoff_participants': playoff_participants,
+        'swiss_rounds': CURRENT_TOURNAMENT.swiss_rounds,
+        'current_round': CURRENT_TOURNAMENT.current_round,
+        'tiebreakers': tiebreakers,
+        'completed': CURRENT_TOURNAMENT.completed,
+        'winner': CURRENT_TOURNAMENT.winner.name if CURRENT_TOURNAMENT.winner else None
     })
 
 

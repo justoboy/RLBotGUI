@@ -18,8 +18,56 @@
                 <b-form-select-option value="single_elimination">Single Elimination</b-form-select-option>
                 <b-form-select-option value="double_elimination">Double Elimination</b-form-select-option>
                 <b-form-select-option value="round_robin">Round Robin</b-form-select-option>
+                <b-form-select-option value="swiss">Swiss</b-form-select-option>
             </b-form-select>
         </b-form-group>
+
+        <!-- Swiss Format Settings -->
+        <div v-if="newTournament.format === 'swiss'" class="swiss-settings-section">
+            <h5>Swiss Settings</h5>
+            <p class="text-muted small">
+                <b-icon icon="info-circle"></b-icon>
+                Swiss format: every participant plays each round, matched against opponents
+                with similar records. No one is eliminated until the end.
+            </p>
+
+            <b-form-group label="Number of Rounds" label-for="swiss-rounds">
+                <b-form-input
+                    id="swiss-rounds"
+                    type="number"
+                    min="1"
+                    max="10"
+                    size="sm"
+                    style="width: 100px;"
+                    v-model.number="newTournament.swiss_rounds"
+                ></b-form-input>
+                <small class="text-muted ml-2">
+                    Auto-calculated as log2(participants) — e.g. 4 = 2 rounds, 8 = 3 rounds.
+                    Leave at 0 to auto-calculate.
+                </small>
+            </b-form-group>
+
+            <b-form-group label="Tiebreaker Priority" label-for="swiss-tiebreakers">
+                <p class="text-muted small mb-2">
+                    Applied in order when the top 2 participants are tied on wins after all rounds.
+                    If none can separate them, a head-to-head playoff match is scheduled.
+                </p>
+                <div class="swiss-tiebreaker-list">
+                    <div v-for="(tb, idx) in newTournament.swiss_tiebreakers" :key="tb" class="swiss-tiebreaker-row">
+                        <span class="swiss-tb-rank">{{ idx + 1 }}.</span>
+                        <span class="swiss-tb-name">{{ swissTiebreakerLabel(tb) }}</span>
+                        <span class="swiss-tb-arrows">
+                            <b-icon icon="arrow-up" font-scale="0.8" class="reorder-btn"
+                                    :class="{ 'disabled': idx === 0 }"
+                                    @click="moveSwissTiebreaker(idx, idx - 1)"></b-icon>
+                            <b-icon icon="arrow-down" font-scale="0.8" class="reorder-btn"
+                                    :class="{ 'disabled': idx === newTournament.swiss_tiebreakers.length - 1 }"
+                                    @click="moveSwissTiebreaker(idx, idx + 1)"></b-icon>
+                        </span>
+                    </div>
+                </div>
+            </b-form-group>
+        </div>
 
         <b-form-group label="Team Size" label-for="tournament-team-size">
             <b-form-radio-group

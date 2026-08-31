@@ -1,0 +1,105 @@
+<!-- Swiss View (inlined into the main tournament component scope; carries v-else) -->
+<div class="swiss-view swiss-view-scrollable" v-else>
+    <div class="swiss-header">
+        <h4>Swiss Format</h4>
+        <span class="swiss-round-info" v-if="tournamentState.swiss_rounds > 0">
+            Round {{ tournamentState.current_round }} of {{ tournamentState.swiss_rounds }}
+        </span>
+        <b-button @click="randomizeSeeding" variant="outline-primary" size="sm" v-if="!tournamentState.completed">
+            <b-icon icon="shuffle"></b-icon> Randomize Seeding
+        </b-button>
+    </div>
+
+    <!-- Playoff banner -->
+    <div class="swiss-playoff-banner" v-if="swissStandings && swissStandings.playoff_needed">
+        <b-icon icon="trophy" variant="warning" font-scale="1.2"></b-icon>
+        <span>
+            <strong>Playoff required!</strong>
+            Top 2 are tied: {{ (swissStandings.playoff_participants || []).join(' vs ') }}.
+            Complete the playoff match to determine the winner.
+        </span>
+    </div>
+
+    <div class="swiss-content">
+        <!-- Matches by round -->
+        <div class="swiss-matches">
+            <h5>Matches</h5>
+            <div v-for="round in swissRounds" :key="round.num" class="swiss-round-group">
+                <div class="swiss-round-title">
+                    Round {{ round.num }}
+                    <b-badge v-if="round.num === tournamentState.current_round && !tournamentState.completed" variant="primary" class="ml-2">Current</b-badge>
+                    <b-badge v-if="round.num > tournamentState.current_round" variant="secondary" class="ml-2">Upcoming</b-badge>
+                    <b-badge v-if="round.num === tournamentState.swiss_rounds + 1" variant="warning" class="ml-2">Playoff</b-badge>
+                </div>
+                <div class="matches-list">
+                    <div v-for="match in round.matches" :key="match.match_id"
+                         class="swiss-match"
+                         :class="{ 'completed': match.completed, 'active': isMatchActive(match), 'in-progress': isMatchInProgress(match), 'selected': selectedMatchId === match.match_id, 'playoff': match.round_num > tournamentState.swiss_rounds }"
+                         @click="selectMatch(match)">
+                        <div class="match-info">
+                            <span class="match-id">{{ match.match_id }}</span>
+                            <span class="match-pair">
+                                {{ match.participant1?.name || 'Waiting' }} vs {{ match.participant2?.name || 'Waiting' }}
+                            </span>
+                        </div>
+                        <div class="match-result" v-if="match.completed">
+                            <span class="match-score">{{ match.score?.[0] }} - {{ match.score?.[1] }}</span>
+                            <b-icon icon="check-circle-fill" variant="success"></b-icon>
+                        </div>
+                        <div class="match-status" v-else-if="isMatchInProgress(match)">
+                            <b-icon icon="hourglass-split" variant="info"></b-icon> In Progress
+                        </div>
+                        <div class="match-status" v-else>
+                            <span>Pending</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Standings Table -->
+        <div class="swiss-standings">
+            <h5>Standings</h5>
+            <table class="standings-table" v-if="swissStandings && swissStandings.standings">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Participant</th>
+                        <th>Played</th>
+                        <th>Wins</th>
+                        <th>Draws</th>
+                        <th>Losses</th>
+                        <th>Goals For</th>
+                        <th>Goals Against</th>
+                        <th>Goal Difference</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="s in swissStandings.standings" :key="s.participant_id"
+                        :class="{ 'swiss-winner': swissStandings.winner === s.name }">
+                        <td>{{ s.rank }}</td>
+                        <td class="participant-name">
+                            {{ s.name }}
+                            <b-icon v-if="s.rank === 1 && swissStandings.winner === s.name" icon="trophy-fill" variant="warning" font-scale="0.7"></b-icon>
+                        </td>
+                        <td>{{ s.played }}</td>
+                        <td>{{ s.wins }}</td>
+                        <td>{{ s.draws }}</td>
+                        <td>{{ s.losses }}</td>
+                        <td>{{ s.goals_for }}</td>
+                        <td>{{ s.goals_against }}</td>
+                        <td>{{ s.goal_difference > 0 ? '+' : '' }}{{ s.goal_difference }}</td>
+                    </tr>
+                </tbody>
+            </table>
+            <div v-else class="text-muted small">
+                <b-icon icon="info-circle"></b-icon>
+                Standings will appear here once the tournament is active.
+            </div>
+            <div class="swiss-tiebreaker-hint text-muted small mt-2" v-if="swissStandings && swissStandings.tiebreakers">
+                <b-icon icon="info-circle" font-scale="0.8"></b-icon>
+                Tiebreakers: {{ swissStandings.tiebreakers.map(swissTiebreakerLabel).join(' → ') }}
+            </div>
+        </div>
+    </div>
+</div>

@@ -64,7 +64,10 @@ export default {
                 allow_duplicates: false,
                 human_count: 0,
                 human_names: [],
-                mutators: { ...DEFAULT_MUTATORS }
+                mutators: { ...DEFAULT_MUTATORS },
+                // Phase 4: Swiss format settings
+                swiss_rounds: 0,  // 0 = auto-calculate as ceil(log2(participants))
+                swiss_tiebreakers: ['score_differential', 'goals_scored', 'head_to_head']
             },
             currentMatch: null,
             matchInProgress: null,
@@ -99,6 +102,8 @@ export default {
             autoStartSkipHumans: true,  // Skip matches with humans
             autoStartTimer: null,       // Timer interval reference
             autoStartCountdown: null,   // Current countdown value
+            // Phase 4: Swiss format
+            swissStandings: null,       // Live standings from eel.tournament_get_swiss_standings()
         };
     },
     computed: {
@@ -107,7 +112,8 @@ export default {
             const labels = {
                 'single_elimination': 'Single Elimination',
                 'double_elimination': 'Double Elimination',
-                'round_robin': 'Round Robin'
+                'round_robin': 'Round Robin',
+                'swiss': 'Swiss'
             };
             return labels[this.tournamentState.format] || this.tournamentState.format;
         },
@@ -138,6 +144,11 @@ export default {
             }
             if (count < (teamSize > 1 ? teamSize * 2 : 2)) return false;
             if (teamSize > 1 && count % teamSize !== 0) return false;
+            // Swiss requires an even number of entities (participants or teams)
+            if (this.newTournament.format === 'swiss') {
+                const entities = teamSize > 1 ? Math.floor(count / teamSize) : count;
+                if (entities < 2 || entities % 2 !== 0) return false;
+            }
             return true;
         },
         createBlockReason() {
@@ -157,6 +168,15 @@ export default {
                 const missing = teamSize - (count % teamSize);
                 return `Participant count (${count}) is not divisible by team size (${teamSize}). Add ${missing} more to form full teams.`;
             }
+            if (this.newTournament.format === 'swiss') {
+                const entities = teamSize > 1 ? Math.floor(count / teamSize) : count;
+                if (entities < 2) {
+                    return 'Swiss format requires at least 2 participants (or 2 teams)';
+                }
+                if (entities % 2 !== 0) {
+                    return `Swiss format requires an even number of ${teamSize > 1 ? 'teams' : 'participants'} (got ${entities}). Add one more to make it even.`;
+                }
+            }
             return '';
         },
         matchesByRound() {
@@ -170,7 +190,12 @@ export default {
                 rounds[match.round_num].push(match);
             }
   
-            return Object.values(rounds);
+            // Sort by round number so iteration order is deterministic
+            // (important for Swiss, where rounds are generated incrementally).
+            return Object.keys(rounds)
+                .map(Number)
+                .sort((a, b) => a - b)
+                .map(rn => rounds[rn]);
         },
         currentRound() {
             if (!this.tournamentState || !this.tournamentState.matches) return 1;
@@ -412,6 +437,34 @@ export default {
             });
 
             return result;
+        },
+        // Phase 4: Swiss format — group matches by round for the Swiss view.
+        swissRounds() {
+            if (!this.tournamentState || this.tournamentState.format !== 'swiss') return [];
+            const matches = this.tournamentState.matches || [];
+            const byRound = {};
+            for (const m of matches) {
+                if (!byRound[m.round_num]) byRound[m.round_num] = [];
+                byRound[m.round_num].push(m);
+            }
+            const roundNums = Object.keys(byRound).map(Number).sort((a, b) => a - b);
+            return roundNums.map(num => ({ num, matches: byRound[num] }));
+        },
+        winnerDisplayName() {
+            if (!this.tournamentState) {
+                return '';
+            }
+            // Check winner_team first (for team-based tournaments)
+            if (this.tournamentState.winner_team) {
+                const name = this.tournamentState.winner_team.name;
+                return typeof name === 'string' ? name : '';
+            }
+            // Check winner (for 1v1 Swiss format)
+            if (this.tournamentState.winner) {
+                const name = this.tournamentState.winner.name;
+                return typeof name === 'string' ? name : '';
+            }
+            return '';
         }
     },
     methods: {
@@ -700,6 +753,13 @@ export default {
             const allParticipants = [...this.selectedParticipants, ...this.humanParticipants];
             console.log('[Tournament] Participants to create:', allParticipants.length);
 
+            // Phase 4: Swiss format parameters
+            const isSwiss = this.newTournament.format === 'swiss';
+            const swissTiebreakersJson = isSwiss
+                ? JSON.stringify(this.newTournament.swiss_tiebreakers || [])
+                : '[]';
+            const swissRounds = isSwiss ? (Number(this.newTournament.swiss_rounds) || 0) : 0;
+
             try {
                 console.log('[Tournament] Calling eel.tournament_new...');
                 const result = await eel.tournament_new(
@@ -708,7 +768,9 @@ export default {
                     JSON.stringify(allParticipants),
                     JSON.stringify(this.newTournament.mutators),
                     teamSize,
-                    allowDuplicates
+                    allowDuplicates,
+                    swissTiebreakersJson,
+                    swissRounds
                 )();
 
                 console.log('[Tournament] tournament_new returned:', result.substring(0, 200));
@@ -722,9 +784,10 @@ export default {
                 this.tournamentState = state;
                 console.log('[Tournament] After: tournamentState is', this.tournamentState ? 'set' : 'null');
                 this.selectedParticipants = [];
-                this.newTournament = { name: '', format: 'single_elimination', team_size: 1, allow_duplicates: false, human_count: 0, human_names: [], mutators: { ...DEFAULT_MUTATORS } };
+                this.newTournament = { name: '', format: 'single_elimination', team_size: 1, allow_duplicates: false, human_count: 0, human_names: [], mutators: { ...DEFAULT_MUTATORS }, swiss_rounds: 0, swiss_tiebreakers: ['score_differential', 'goals_scored', 'head_to_head'] };
                 this.refreshTeamBalance();
                 this.refreshStats();
+                this.refreshSwissStandings();
                 this.showCreateModalDialog = false;
                 console.log('[Tournament] Modal closed, calling loadSavedTournaments...');
                 this.loadSavedTournaments();
@@ -741,6 +804,7 @@ export default {
                     this.tournamentState = JSON.parse(result);
                     this.refreshTeamBalance();
                     this.refreshStats();
+                    this.refreshSwissStandings();
                 }
             } catch (error) {
                 console.error('Error loading tournament:', error);
@@ -920,13 +984,6 @@ export default {
             }
         },
 
-        winnerDisplayName() {
-            if (!this.tournamentState) return '';
-            if (this.tournamentState.winner_team) return this.tournamentState.winner_team.name;
-            if (this.tournamentState.winner) return this.tournamentState.winner.name;
-            return '';
-        },
-        
         participantToBot(participant) {
             return {
                 name: participant.name,
@@ -1222,6 +1279,7 @@ export default {
                 this.matchInProgress = null;
                 this.refreshTeamBalance();
                 this.refreshStats();
+                this.refreshSwissStandings();
                 this.$bvModal.hide('match-result-modal');
                 
                 if (this.tournamentState.completed) {
@@ -1293,6 +1351,7 @@ export default {
                         console.log('[Tournament] After: tournamentState is', this.tournamentState ? this.tournamentState.name : 'null');
                         this.refreshTeamBalance();
                         this.refreshStats();
+                        this.refreshSwissStandings();
                     }
                 });
             } else {
@@ -1313,7 +1372,8 @@ export default {
             const labels = {
                 'single_elimination': 'Single Elimination',
                 'double_elimination': 'Double Elimination',
-                'round_robin': 'Round Robin'
+                'round_robin': 'Round Robin',
+                'swiss': 'Swiss'
             };
             return labels[format] || format;
         },
@@ -1393,6 +1453,7 @@ export default {
                 this.tournamentState = data;
                 this.refreshTeamBalance();
                 this.refreshStats();
+                this.refreshSwissStandings();
                 alert('Tournament imported successfully!');
             } catch (error) {
                 console.error('Error importing tournament:', error);
@@ -1449,12 +1510,21 @@ export default {
                         updatedMatch = currentState.losers_bracket_matches.find(m => m.match_id === matchId);
                     }
                     if (updatedMatch && updatedMatch.completed) {
-                        this.tournamentState = currentState;
+                        // Simplify winner objects to plain { name } to avoid Vue
+                        // reactivity proxy issues with nested dataclass objects.
+                        if (currentState.winner && typeof currentState.winner.name === 'string') {
+                            currentState.winner = { name: currentState.winner.name };
+                        }
+                        if (currentState.winner_team && typeof currentState.winner_team.name === 'string') {
+                            currentState.winner_team = { name: currentState.winner_team.name };
+                        }
+                        this.$set(this, 'tournamentState', currentState);
                         this.matchInProgress = null;
                         this.currentMatch = null;
                         clearInterval(pollInterval);
                         this.refreshTeamBalance();
                         this.refreshStats();
+                        this.refreshSwissStandings();
                         // Phase 4: Auto-start next match if enabled
                         this.onMatchComplete();
                     }
@@ -1496,6 +1566,40 @@ export default {
                 this.statsData = data.error ? null : data;
             } catch (e) {
                 this.statsData = null;
+            }
+        },
+
+        // ------------------------------------------------------------------
+        // Phase 4: Swiss format
+        // ------------------------------------------------------------------
+        swissTiebreakerLabel(tb) {
+            const labels = {
+                'score_differential': 'Score differential (goals for - goals against)',
+                'goals_scored': 'Total goals scored',
+                'head_to_head': 'Head-to-head result'
+            };
+            return labels[tb] || tb;
+        },
+
+        moveSwissTiebreaker(from, to) {
+            const list = this.newTournament.swiss_tiebreakers;
+            if (to < 0 || to >= list.length) return;
+            const [item] = list.splice(from, 1);
+            list.splice(to, 0, item);
+        },
+
+        async refreshSwissStandings() {
+            if (!this.tournamentState || this.tournamentState.format !== 'swiss') {
+                this.swissStandings = null;
+                return;
+            }
+            try {
+                const result = await eel.tournament_get_swiss_standings()();
+                const data = JSON.parse(result);
+                this.swissStandings = data.error ? null : data;
+            } catch (e) {
+                console.error('Error fetching Swiss standings:', e);
+                this.swissStandings = null;
             }
         },
 

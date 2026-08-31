@@ -305,6 +305,9 @@ def generate_team_bracket(
         matches, losers_matches, _ = generate_double_elimination_bracket(stand_ins)
     elif tournament_format == 'round_robin':
         matches = generate_round_robin_bracket(stand_ins)
+    elif tournament_format == 'swiss':
+        from rlbot_gui.tournament.bracket_generator import generate_swiss_round1
+        matches = generate_swiss_round1(stand_ins)
     else:
         raise ValueError(f"Unknown tournament format: {tournament_format}")
 

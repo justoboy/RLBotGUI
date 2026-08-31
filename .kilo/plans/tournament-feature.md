@@ -366,8 +366,8 @@ rlbot_gui/
      2. ✅ Random team names (100+ combinations, editable, unique within tournament)
       3. ✅ Seeding editor + manual team pairing (click-to-pair, auto-form remaining)
       4. ✅ Start match button + auto-start matches (timer, skip humans option)
-      5. Swiss tournament format (log2 rounds, user-selectable tiebreakers, playoff for ties)
-     6. Match history view (round-grouped, expandable stats, CSV/JSON export)
+      5. ✅ Swiss tournament format (log2 rounds, user-selectable tiebreakers, playoff for ties)
+      6. Match history view (round-grouped, expandable stats, CSV/JSON export)
      7. Tournament mutator presets (Standard, Rumble, Hoops, etc.)
 
 ## LAN Match Workflow (Multi-Human Tournaments)
@@ -445,9 +445,9 @@ When a match contains **one or more human participants**, do **not** launch the 
         1. ✅ **Bug Fix**: Human participant validation (counting, team assignment, usernames) — Fixed: `v-model.number` on count input, `v-model` on name inputs, watcher to keep `human_names` in sync with `human_count`; bracket match cards cleaned up (duplicate participant name badges removed)
         2. ✅ Random team names (100+ combinations, editable, unique within tournament)
         3. ✅ Seeding editor + manual team pairing (click-to-pair, auto-form remaining)
-        4. ✅ Start match button + auto-start matches (timer, skip humans option)
-        5. Swiss tournament format (log2 rounds, user-selectable tiebreakers, playoff for ties)
-        6. Match history view (round-grouped, expandable stats, CSV/JSON export)
+      4. ✅ Start match button + auto-start matches (timer, skip humans option)
+      5. ✅ Swiss tournament format (log2 rounds, user-selectable tiebreakers, playoff for ties)
+      6. Match history view (round-grouped, expandable stats, CSV/JSON export)
         7. Tournament mutator presets (Standard, Rumble, Hoops, etc.)
 
 ## Tournament Mutator Values Reference

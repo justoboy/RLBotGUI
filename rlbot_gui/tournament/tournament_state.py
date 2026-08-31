@@ -44,6 +44,9 @@ class Team:
     wins: int = 0
     losses: int = 0
     points: int = 0  # For round robin
+    # Swiss format tiebreaker tracking
+    goals_for: int = 0  # Total goals scored (Swiss tiebreaker)
+    goals_against: int = 0  # Total goals conceded (Swiss tiebreaker)
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -52,7 +55,9 @@ class Team:
             'participants': [p.to_dict() for p in self.participants],
             'wins': self.wins,
             'losses': self.losses,
-            'points': self.points
+            'points': self.points,
+            'goals_for': self.goals_for,
+            'goals_against': self.goals_against
         }
     
     @staticmethod
@@ -62,7 +67,9 @@ class Team:
             name=data.get('name', ''),
             wins=data.get('wins', 0),
             losses=data.get('losses', 0),
-            points=data.get('points', 0)
+            points=data.get('points', 0),
+            goals_for=data.get('goals_for', 0),
+            goals_against=data.get('goals_against', 0)
         )
         for p_data in data.get('participants', []):
             team.participants.append(Participant.from_dict(p_data))
@@ -133,7 +140,7 @@ class TournamentState:
     """Represents the complete state of a tournament"""
     name: str
     tournament_id: str
-    format: str  # 'single_elimination', 'double_elimination', 'round_robin'
+    format: str  # 'single_elimination', 'double_elimination', 'round_robin', 'swiss'
     participants: List[Participant] = field(default_factory=list)
     matches: List[Match] = field(default_factory=list)
     current_round: int = 1
@@ -148,7 +155,11 @@ class TournamentState:
     winner_team: Optional[Team] = None  # Winning team (when team_size > 1)
     # Party-mode: allow the same bot to be duplicated within a team
     allow_duplicates: bool = False  # When True, each team member is a copy of one participant
-    
+    # Phase 4: Swiss format fields
+    swiss_rounds: int = 0  # Number of Swiss rounds (0 = not Swiss)
+    swiss_tiebreakers: List[str] = field(default_factory=list)  # Ordered tiebreaker keys
+    swiss_playoff_scheduled: bool = False  # Whether a playoff match has been added
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             'name': self.name,
@@ -165,7 +176,10 @@ class TournamentState:
             'team_size': self.team_size,
             'teams': [t.to_dict() for t in self.teams],
             'winner_team': self.winner_team.to_dict() if self.winner_team else None,
-            'allow_duplicates': self.allow_duplicates
+            'allow_duplicates': self.allow_duplicates,
+            'swiss_rounds': self.swiss_rounds,
+            'swiss_tiebreakers': self.swiss_tiebreakers,
+            'swiss_playoff_scheduled': self.swiss_playoff_scheduled
         }
     
     @staticmethod
@@ -179,7 +193,10 @@ class TournamentState:
             created_at=data.get('created_at', datetime.now().isoformat()),
             match_settings=data.get('match_settings', {}),
             team_size=data.get('team_size', 1),
-            allow_duplicates=data.get('allow_duplicates', False)
+            allow_duplicates=data.get('allow_duplicates', False),
+            swiss_rounds=data.get('swiss_rounds', 0),
+            swiss_tiebreakers=data.get('swiss_tiebreakers', []),
+            swiss_playoff_scheduled=data.get('swiss_playoff_scheduled', False)
         )
         for p_data in data.get('participants', []):
             state.participants.append(Participant.from_dict(p_data))

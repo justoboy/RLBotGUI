@@ -95,7 +95,115 @@ def generate_single_elimination_bracket(participants: List[Participant]) -> Tupl
     if remaining_matches:
         matches.extend(remaining_matches)
     
+    # Now process bye winners: place them into their next round matches
+    # and recursively handle any cascading byes in later rounds
+    _process_bye_winners(matches)
+    
     return matches, num_rounds
+
+
+def _process_bye_winners(matches: List[Match]) -> None:
+    """
+    Process bye winners by placing them into their next round matches.
+    This handles both round 1 byes and byes that occur in later rounds
+    when there's an odd number of participants advancing.
+    """
+    # First pass: find all completed bye matches from round 1
+    for match in matches:
+        if match.completed and match.winner and match.next_match_id:
+            # This is a bye match - advance the winner to the next round
+            _advance_bye_winner(match, match.winner, matches)
+
+
+def _advance_bye_winner(match: Match, winner: Participant, all_matches: List[Match]) -> None:
+    """
+    Advance a bye winner to their next match.
+    If the next match only has one slot filled (because the other slot
+    also came from a bye), recursively handle that bye too.
+    """
+    # Find the next match
+    next_match = None
+    for m in all_matches:
+        if m.match_id == match.next_match_id:
+            next_match = m
+            break
+    
+    if next_match is None:
+        return
+    
+    # Place winner in the next match
+    if next_match.participant1 is None:
+        next_match.participant1 = winner
+    elif next_match.participant2 is None:
+        next_match.participant2 = winner
+    else:
+        # Both slots are filled - shouldn't happen with byes
+        return
+    
+    # Check if this creates a bye situation in the next round
+    # (i.e., the next match has only 1 participant and the other slot
+    # feeds from another bye that hasn't been processed yet)
+    if next_match.participant1 is not None and next_match.participant2 is None:
+        # Check if the other slot that feeds into this match is also a bye
+        # We need to find the other match that feeds into next_match
+        completed_feeder = _find_completed_unprocessed_feeder(next_match, all_matches)
+        if completed_feeder is not None and completed_feeder.winner:
+            # The other feeder is also a bye - advance that winner too
+            _advance_bye_winner(completed_feeder, completed_feeder.winner, all_matches)
+        else:
+            # No completed unprocessed feeder - check if there's no other feeder at all
+            all_feeders = _get_all_feeders(next_match, all_matches)
+            if len(all_feeders) == 0:
+                # No other feeder - this is a bye in a later round
+                # The single participant advances automatically
+                next_match.completed = True
+                next_match.winner = next_match.participant1
+                if next_match.next_match_id:
+                    _advance_bye_winner(next_match, next_match.participant1, all_matches)
+    elif next_match.participant1 is None and next_match.participant2 is not None:
+        # Same logic, just swapped
+        completed_feeder = _find_completed_unprocessed_feeder(next_match, all_matches)
+        if completed_feeder is not None and completed_feeder.winner:
+            # The other feeder is also a bye - advance that winner too
+            _advance_bye_winner(completed_feeder, completed_feeder.winner, all_matches)
+        else:
+            all_feeders = _get_all_feeders(next_match, all_matches)
+            if len(all_feeders) == 0:
+                # No other feeder - this is a bye in a later round
+                # The single participant advances automatically
+                next_match.completed = True
+                next_match.winner = next_match.participant2
+                if next_match.next_match_id:
+                    _advance_bye_winner(next_match, next_match.participant2, all_matches)
+
+
+def _get_all_feeders(match: Match, all_matches: List[Match]) -> List[Match]:
+    """
+    Get all matches that feed into the given match.
+    """
+    feeders = []
+    for m in all_matches:
+        if m.next_match_id == match.match_id:
+            feeders.append(m)
+    return feeders
+
+
+def _find_completed_unprocessed_feeder(match: Match, all_matches: List[Match]) -> Optional[Match]:
+    """
+    Find a feeder match that is completed (has a winner) but hasn't been processed
+    (i.e., the winner hasn't been placed in this match yet).
+    """
+    feeders = _get_all_feeders(match, all_matches)
+    
+    for feeder in feeders:
+        # Check if feeder is completed with a winner
+        if feeder.completed and feeder.winner:
+            # Check if this winner is already in the next match
+            if match.participant1 != feeder.winner and match.participant2 != feeder.winner:
+                # The winner hasn't been placed in this match yet
+                return feeder
+    
+    return None
 
 
 def seed_bracket(slots: List[Optional[Participant]], bracket_size: int) -> List[Optional[Participant]]:
@@ -352,6 +460,9 @@ def generate_double_elimination_bracket(participants: List[Participant]) -> Tupl
     
     # Set losers_next_match_id for winners bracket matches
     set_winners_bracket_loser_destinations(winners_matches, losers_matches)
+    
+    # Process bye winners in the winners bracket
+    _process_bye_winners(winners_matches)
     
     return winners_matches, losers_matches, num_rounds
 

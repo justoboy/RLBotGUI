@@ -1202,14 +1202,96 @@ def advance_winner(match: Match, winner: Participant) -> None:
     
     print(f"DEBUG: advance_winner({match.match_id}) - {winner.name} assigned to {next_match_id} (slot {'participant1' if next_match.participant1 == winner else 'participant2'})")
     
-    # Only auto-complete as a bye if this is round 1 (power of 2 bracket with odd participants)
-    # In later rounds, a match with 1 participant just means waiting for the other winner
-    if next_match.round_num == 1 and next_match.participant1 is not None and next_match.participant2 is None:
-        # Only one participant in round 1 - they get a bye
-        print(f"DEBUG: advance_winner({match.match_id}) - M1 bye for {winner.name}")
-        next_match.completed = True
-        next_match.winner = next_match.participant1
-        advance_winner(next_match, next_match.participant1)
+    # Check if next match has a bye situation
+    _handle_bye_situation(next_match)
+
+
+def _handle_bye_situation(next_match: Match) -> None:
+    """
+    Handle bye situations in any round.
+    
+    A bye occurs when:
+    1. A match has only 1 participant and the other slot feeds from a completed bye match
+    2. A match has only 1 participant and there's no other feeder (odd number of participants)
+    
+    In both cases, the single participant should automatically advance.
+    """
+    global CURRENT_TOURNAMENT
+    
+    if CURRENT_TOURNAMENT is None:
+        return
+    
+    # Check if next match has only 1 participant
+    if next_match.participant1 is not None and next_match.participant2 is None:
+        # Check all feeders to find any completed bye matches that haven't been processed
+        completed_feeder = _find_completed_unprocessed_feeder(next_match)
+        
+        if completed_feeder is not None and completed_feeder.winner:
+            # The other feeder is a completed bye - advance that winner
+            print(f"DEBUG: _handle_bye_situation - advancing bye winner {completed_feeder.winner.name} from {completed_feeder.match_id}")
+            advance_winner(completed_feeder, completed_feeder.winner)
+        else:
+            # No completed unprocessed feeder - check if there's no other feeder at all
+            # (this is a bye in a later round)
+            all_feeders = _get_all_feeders(next_match)
+            if len(all_feeders) == 0:
+                # No other feeder - this is a bye in a later round
+                # The single participant advances automatically
+                print(f"DEBUG: _handle_bye_situation - later round bye for {next_match.participant1.name} in {next_match.match_id}")
+                next_match.completed = True
+                next_match.winner = next_match.participant1
+                if next_match.next_match_id:
+                    advance_winner(next_match, next_match.participant1)
+    elif next_match.participant1 is None and next_match.participant2 is not None:
+        # Same logic, just swapped
+        completed_feeder = _find_completed_unprocessed_feeder(next_match)
+        
+        if completed_feeder is not None and completed_feeder.winner:
+            print(f"DEBUG: _handle_bye_situation - advancing bye winner {completed_feeder.winner.name} from {completed_feeder.match_id}")
+            advance_winner(completed_feeder, completed_feeder.winner)
+        else:
+            all_feeders = _get_all_feeders(next_match)
+            if len(all_feeders) == 0:
+                print(f"DEBUG: _handle_bye_situation - later round bye for {next_match.participant2.name} in {next_match.match_id}")
+                next_match.completed = True
+                next_match.winner = next_match.participant2
+                if next_match.next_match_id:
+                    advance_winner(next_match, next_match.participant2)
+
+
+def _get_all_feeders(match: Match) -> List[Match]:
+    """
+    Get all matches that feed into the given match.
+    """
+    feeders = []
+    for m in CURRENT_TOURNAMENT.matches:
+        if m.next_match_id == match.match_id:
+            feeders.append(m)
+    
+    # Also check losers bracket
+    for m in CURRENT_TOURNAMENT.losers_bracket_matches:
+        if m.next_match_id == match.match_id:
+            feeders.append(m)
+    
+    return feeders
+
+
+def _find_completed_unprocessed_feeder(match: Match) -> Optional[Match]:
+    """
+    Find a feeder match that is completed (has a winner) but hasn't been processed
+    (i.e., the winner hasn't been placed in this match yet).
+    """
+    feeders = _get_all_feeders(match)
+    
+    for feeder in feeders:
+        # Check if feeder is completed with a winner
+        if feeder.completed and feeder.winner:
+            # Check if this winner is already in the next match
+            if match.participant1 != feeder.winner and match.participant2 != feeder.winner:
+                # The winner hasn't been placed in this match yet
+                return feeder
+    
+    return None
 
 
 @eel.expose

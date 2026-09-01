@@ -433,3 +433,53 @@
         <b-button @click="currentMatch = null; $bvModal.hide('match-result-modal')" variant="secondary">Cancel</b-button>
     </div>
 </b-modal>
+
+<!-- Human Match Info Modal -->
+<b-modal id="human-info-modal" title="Human Match Setup" centered size="lg" hide-footer>
+    <div>
+        <h5>Setting Up Human Match</h5>
+        
+        <div class="info-card">
+            <h6>Instructions:</h6>
+            <ol>
+                <li>Click "Open Rocket League" to launch the game</li>
+                <li>Host: Press <b>Home</b> → <b>Host</b> in Rocket Plugin</li>
+                <li>Ensure "Continue and Spawn" is selected in RLBot GUI Settings</li>
+                <li>Human players: Press <b>Home</b> → <b>Join</b> in Rocket Plugin</li>
+                <li>When all players are ready, click "Start Match"</li>
+            </ol>
+            
+            <h6>Current Tournament Settings:</h6>
+            <ul v-if="currentMatchSettings && Object.keys(currentMatchSettings).length > 0">
+                <li><b>Map:</b> {{ currentMatchSettings.map || 'Default' }}</li>
+                <li><b>Match Length:</b> {{ currentMatchSettings.mutators?.match_length || '5 Minutes' }}</li>
+                <li><b>Max Score:</b> {{ currentMatchSettings.mutators?.max_score || '5 Goals' }}</li>
+                <li><b>Game Speed:</b> {{ currentMatchSettings.mutators?.game_speed || 'Default' }}</li>
+                <li><b>Boost Amount:</b> {{ currentMatchSettings.mutators?.boost_amount || 'Default' }}</li>
+                <li><b>Rumble:</b> {{ currentMatchSettings.mutators?.rumble || 'None' }}</li>
+                <li><b>Demolish:</b> {{ currentMatchSettings.mutators?.demolish || 'Default' }}</li>
+            </ul>
+            <p v-else class="text-muted">No tournament settings available.</p>
+            
+            <h6>Player Count:</h6>
+            <p>
+                <b-icon icon="people"></b-icon> 
+                Total players: {{ currentHumanCount }} ({{ currentTeam1Count }} vs {{ currentTeam2Count }})
+            </p>
+            
+            <div class="alert alert-info mt-3">
+                <b-icon icon="info-circle"></b-icon>
+                <strong>Important:</strong> The host must configure mutators in Rocket Plugin to match
+                the tournament settings above. RLBot will inject bots but cannot change match settings
+                once the host has started the server.
+            </div>
+        </div>
+        
+        <div class="modal-footer mt-3">
+            <b-button @click="$bvModal.hide('human-info-modal')" variant="secondary">Close</b-button>
+            <b-button @click="openRocketLeague" variant="info">
+                <b-icon icon="play-circle"></b-icon> Open Rocket League
+            </b-button>
+        </div>
+    </div>
+</b-modal>

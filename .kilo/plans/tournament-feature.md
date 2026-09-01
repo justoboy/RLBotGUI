@@ -367,8 +367,9 @@ rlbot_gui/
       3. ✅ Seeding editor + manual team pairing (click-to-pair, auto-form remaining)
       4. ✅ Start match button + auto-start matches (timer, skip humans option)
       5. ✅ Swiss tournament format (log2 rounds, user-selectable tiebreakers, playoff for ties)
-      6. Match history view (round-grouped, expandable stats, CSV/JSON export)
-     7. Tournament mutator presets (Standard, Rumble, Hoops, etc.)
+      6. ✅ Match history view (round-grouped, expandable stats, CSV/JSON export)
+      7. ✅ Tournament mutator presets (Standard, Rumble, Hoops, etc.)
+      8. ⬜ Tournament map selection (select map during tournament creation, display in human match info modal)
 
 ## LAN Match Workflow (Multi-Human Tournaments)
 
@@ -423,6 +424,7 @@ When a match contains **one or more human participants**, do **not** launch the 
 ### Phase 4 Design Decisions (Confirmed)
 
   12. **Swiss Format**: log2(participants) rounds (rounded up), user-selectable tiebreaker priority (score differential, goals scored, head-to-head), head-to-head playoff match when top 2 tied
+  21. **Tournament Map Selection**: Single map selected during tournament creation, stored in TournamentState, displayed in Human Match Info modal, uses maps from standard-maps.json
   13. **Auto-Start**: Predefined timer intervals (10s/30s/60s/120s), checkbox "skip human matches" defaults to true, manual start cancels timer
   14. **Start Match Button**: Replace click-to-start entirely, match selection highlight, Enter key shortcut, only one match selectable at a time
   15. **Random Team Names**: 100+ descriptor+noun combinations, generated during team formation, editable, re-randomize option, uniqueness enforced within tournament
@@ -604,3 +606,222 @@ During implementation, the following deviations from the original plan were made
 3. **Team Balance**: `team_balance_report()` computes a simple strength estimate (bots=1.0, humans=0.5); UI not yet wired
 4. **Bye Handling**: Byes are at team level, not participant level
 5. **Minimum Teams**: All team sizes support minimum 2 teams (4-10 participants depending on size)
+
+---
+
+## Tournament Map Selection (Phase 4 Future Enhancement)
+
+### Overview
+Add the ability to select a map during tournament creation and display it in the Human Match Info modal. This addresses the current limitation where the Human Match Info modal shows "Default" for the map because tournaments don't currently store a specific map selection.
+
+### Current Limitation
+- The Human Match Info modal displays "Default" for the map
+- The map is determined by RLBot's default settings rather than tournament preferences
+- Users cannot ensure consistent map selection across tournament matches
+
+### Implementation Plan
+
+#### 1. Data Model Changes
+
+**File: `rlbot_gui/tournament/tournament_state.py`**
+
+Add `map` field to `TournamentState`:
+
+```python
+@dataclass
+class TournamentState:
+    name: str
+    format: str  # 'single_elimination', 'double_elimination', 'round_robin', 'swiss'
+    team_size: int  # 1, 2, 3, 4, or 5
+    map: str | None  # Selected map ID (e.g., 'BeckwithPark', 'DFHStadium')
+    teams: List[Team]  # List of teams with their members
+    matches: List[Match]
+    current_round: int
+    completed: bool
+    winner: Team | None
+    # ... other fields
+```
+
+#### 2. Frontend Changes
+
+**File: `rlbot_gui/gui/js/main-vue.js`**
+
+Add map selector to tournament creation dialog:
+
+```javascript
+// Add to tournament creation data
+map: null,  // Selected map ID
+
+// Add computed property for available maps
+availableMaps() {
+    // Load maps from standard-maps.json
+    return [
+        { id: 'BeckwithPark', name: 'Beckwith Park' },
+        { id: 'DFHStadium', name: 'DFH Stadium' },
+        // ... all maps from standard-maps.json
+    ];
+},
+
+// Add validation for map selection
+validateMapSelection() {
+    // Map is optional, so no validation required
+    return true;
+},
+```
+
+**File: `rlbot_gui/gui/tournament-templates/modals.html`**
+
+Add map selector to tournament creation modal:
+
+```html
+<!-- Add to tournament creation form -->
+<b-form-group label="Map (Optional)">
+    <b-form-select v-model="map">
+        <b-form-select-option :value="null">Default (Random)</b-form-select-option>
+        <b-form-select-option v-for="map in availableMaps" :key="map.id" :value="map.id">
+            {{ map.name }}
+        </b-form-select-option>
+    </b-form-select>
+    <small class="form-text text-muted">
+        Select a map for all tournament matches. If not selected, RLBot will use random maps.
+    </small>
+</b-form-group>
+```
+
+**File: `rlbot_gui/gui/tournament-templates/modals.html`**
+
+Update Human Match Info Modal to display selected map:
+
+```html
+<!-- Update map display in Human Match Info Modal -->
+<h6>Current Tournament Settings:</h6>
+<ul>
+    <li><b>Map:</b> {{ currentMatchSettings?.map || 'Default (Random)' }}</li>
+    <!-- ... other settings -->
+</ul>
+```
+
+#### 3. Backend Changes
+
+**File: `rlbot_gui/tournament/tournament_runner.py`**
+
+Update `tournament_new()` to handle map selection:
+
+```python
+@eel.expose
+def tournament_new(name: str, format: str, team_size: int, participants: List[dict], map: str | None = None) -> str:
+    """
+    Create a new tournament.
+    
+    Args:
+        name: Tournament name
+        format: Tournament format (single_elimination, double_elimination, round_robin, swiss)
+        team_size: Team size (1-5)
+        participants: List of participant objects
+        map: Selected map ID (optional)
+    
+    Returns:
+        JSON string with tournament state
+    """
+    global CURRENT_TOURNAMENT
+    
+    try:
+        # Validate inputs
+        if not name or not format or not team_size:
+            return json.dumps({'error': 'Name, format, and team size are required'})
+        
+        if team_size not in VALID_TEAM_SIZES:
+            return json.dumps({'error': f'Invalid team size. Must be one of: {VALID_TEAM_SIZES}'})
+        
+        # Create tournament state with map
+        CURRENT_TOURNAMENT = TournamentState(
+            name=name,
+            format=format,
+            team_size=team_size,
+            map=map,  # Store selected map
+            teams=[],
+            matches=[],
+            current_round=0,
+            completed=False,
+            winner=None,
+            # ... other fields
+        )
+        
+        # ... rest of tournament creation logic
+        
+        return json.dumps({'success': True, 'tournament': CURRENT_TOURNAMENT.to_dict()})
+    except Exception as e:
+        print(f"Error creating tournament: {e}")
+        return json.dumps({'error': f'Failed to create tournament: {str(e)}'})
+```
+
+**File: `rlbot_gui/tournament/tournament_state.py`**
+
+Update `TournamentState.to_dict()` to include map:
+
+```python
+def to_dict(self) -> dict:
+    return {
+        'name': self.name,
+        'format': self.format,
+        'team_size': self.team_size,
+        'map': self.map,  # Include map in serialized state
+        'teams': [team.to_dict() for team in self.teams],
+        'matches': [match.to_dict() for match in self.matches],
+        'current_round': self.current_round,
+        'completed': self.completed,
+        'winner': self.winner.to_dict() if self.winner else None,
+        # ... other fields
+    }
+```
+
+#### 4. Standard Maps Reference
+
+Available maps are defined in `rlbot_gui/gui/json/standard-maps.json`. Each map has:
+- `id`: Unique identifier (e.g., 'BeckwithPark', 'DFHStadium')
+- `name`: Display name (e.g., 'Beckwith Park', 'DFH Stadium')
+
+Example maps:
+- `BeckwithPark`: Beckwith Park
+- `DFHStadium`: DFH Stadium
+- `ChampionsField`: Champions Field
+- `Mannfield`: Mannfield
+- `UrbanCentral`: Urban Central
+- `UtopiaColiseum`: Utopia Coliseum
+- `NeoTokyo`: Neo Tokyo
+- `And many more...`
+
+### Files to Modify
+
+1. **`rlbot_gui/tournament/tournament_state.py`** - Add `map` field to `TournamentState`
+2. **`rlbot_gui/tournament/tournament_runner.py`** - Handle map in `tournament_new()`
+3. **`rlbot_gui/gui/js/main-vue.js`** - Add map selector to tournament creation
+4. **`rlbot_gui/gui/tournament-templates/modals.html`** - Add map selector UI and update Human Match Info modal
+5. **`rlbot_gui/gui/json/standard-maps.json`** - Reference for available maps
+
+### User Experience
+
+1. **Tournament Creation**:
+   - User opens tournament creation dialog
+   - Optional "Map" dropdown appears with "Default (Random)" as first option
+   - User can select a specific map from the list
+   - Map selection is stored with tournament state
+
+2. **Human Match Info Modal**:
+   - Displays selected map name instead of "Default"
+   - If no map selected, displays "Default (Random)"
+   - Host can configure Rocket Plugin to match the selected map
+
+3. **Tournament Export/Import**:
+   - Map selection is included in exported tournament files
+   - Imported tournaments preserve map selection
+
+### Edge Cases
+
+1. **Map not available**: If a tournament was created with a map that is no longer available (e.g., custom map removed), display "Map Unavailable" and fall back to random
+2. **Tournament import with missing map**: Warn user that selected map is unavailable and offer to change or use random
+3. **Map during active tournament**: Map selection should be locked once tournament starts to prevent inconsistencies
+
+### Priority
+
+This feature is a **nice-to-have enhancement** that improves the human match setup experience by providing clearer information to the host. It is not critical for tournament functionality but enhances usability for human match scenarios.

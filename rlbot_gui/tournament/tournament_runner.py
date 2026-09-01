@@ -31,7 +31,7 @@ from rlbot_gui.tournament.team_manager import (
     generate_team_names,
     assign_random_team_names
 )
-from rlbot_gui.persistence.settings import load_settings, MATCH_SETTINGS_KEY
+from rlbot_gui.persistence.settings import load_settings, MATCH_SETTINGS_KEY, load_launcher_settings, launcher_preferences_from_map
 
 # Global state for current tournament
 CURRENT_TOURNAMENT: Optional[TournamentState] = None
@@ -620,30 +620,24 @@ def tournament_start_match(match_id: str, use_staging: bool = False) -> str:
     has_humans = match_has_humans(match)
     human_count = count_humans_in_match(match)
 
-    # Phase 3: LAN Match Workflow.
-    # If the match has humans and the operator opted into the staging flow,
-    # launch a staging lobby (humans only, no bots, no instant start) so the
-    # host can set up the LAN host and let humans join. The real match is
-    # launched later via tournament_confirm_players_ready().
+    # Issue 4: Staging no longer works with Rocket Plugin's LAN hosting.
+    # The correct workflow is:
+    # 1. Open Rocket League via RLBot
+    # 2. Host uses Rocket Plugin to host LAN match
+    # 3. Humans join via Rocket Plugin
+    # 4. Start match with "Continue and Spawn" setting
+    # 
+    # When use_staging is True for human matches, we now just open RL
+    # and let the user handle the rest manually.
     if has_humans and use_staging:
-        staging_bot_list = [b for b in bot_list if b.get('type') == 'human']
-        staging_settings = dict(match_settings)
-        staging_settings['instant_start'] = False
-        staging_settings['match_behavior'] = 'Restart'
-        # Store the full bot list + real settings so the real match can be
-        # launched with 'Continue And Spawn' once players are ready.
-        STAGING_STATE[match_id] = {
-            'bot_list': bot_list,
-            'match_settings': match_settings,
-            'match_id': match_id
-        }
-        eel.spawn(launch_tournament_match, staging_bot_list, staging_settings, match_id, False)
+        # Just open RL without starting a match
         return json.dumps({
             'success': True,
             'match_id': match_id,
-            'staging': True,
+            'staging': False,  # No staging, just open RL
             'has_humans': True,
             'human_count': human_count,
+            'message': 'Please use Rocket Plugin to host and have humans join, then start the match with Continue and Spawn',
             'participants': [match.participant1.name, match.participant2.name]
         })
 
@@ -761,6 +755,69 @@ def tournament_cancel_staging(match_id: str) -> str:
     if match_id in STAGING_STATE:
         del STAGING_STATE[match_id]
     return json.dumps({'success': True, 'match_id': match_id})
+
+
+@eel.expose
+def tournament_stop_match() -> str:
+    """
+    Stop the currently in-progress match and free up the RLBot server.
+    
+    Returns:
+        JSON string with status
+    """
+    global CURRENT_TOURNAMENT
+    
+    if CURRENT_TOURNAMENT is None:
+        return json.dumps({'error': 'No tournament loaded'})
+    
+    try:
+        from rlbot_gui.match_runner.match_runner import shut_down_match
+        shut_down_match()
+        
+        # Wait a moment for the shutdown to complete
+        import time
+        time.sleep(0.5)
+        
+        # Clear match in progress state
+        # Note: The match is not marked as completed, just stopped
+        # User can retry the same match or start a different one
+        return json.dumps({
+            'success': True,
+            'message': 'Match stopped successfully'
+        })
+    except Exception as e:
+        return json.dumps({
+            'error': f'Failed to stop match: {str(e)}'
+        })
+
+
+@eel.expose
+def open_rocket_league() -> str:
+    """
+    Open Rocket League via RLBot without starting a match.
+    Used for human match setup workflow.
+    
+    Returns:
+        JSON string with status
+    """
+    try:
+        from rlbot_gui.match_runner.match_runner import get_fresh_setup_manager
+        
+        launcher_preference_map = load_launcher_settings()
+        launcher_prefs = launcher_preferences_from_map(launcher_preference_map)
+        
+        sm = get_fresh_setup_manager()
+        sm.connect_to_game(launcher_preference=launcher_prefs)
+        
+        return json.dumps({
+            'success': True,
+            'message': 'Rocket League opened'
+        })
+    except Exception as e:
+        print(f"Error opening Rocket League: {e}")
+        return json.dumps({
+            'error': f'Failed to open Rocket League: {str(e)}'
+        })
 
 
 def launch_tournament_match(bot_list: list, match_settings: dict, match_id: str, wait_for_completion: bool = True):

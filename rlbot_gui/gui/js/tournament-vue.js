@@ -100,8 +100,14 @@ export default {
             autoStartEnabled: false,    // Auto-start toggle
             autoStartInterval: 30,      // Auto-start interval in seconds (default 30s)
             autoStartSkipHumans: true,  // Skip matches with humans
+            autoStartHumanBehavior: 'pause',  // 'continue', 'pause', or 'skip' for human matches
             autoStartTimer: null,       // Timer interval reference
             autoStartCountdown: null,   // Current countdown value
+            // Phase 4: Human Match Info Modal
+            currentMatchSettings: null,   // Current match settings for info modal
+            currentHumanCount: 0,         // Current human count for info modal
+            currentTeam1Count: 0,         // Team 1 player count for info modal
+            currentTeam2Count: 0,         // Team 2 player count for info modal
             // Phase 4: Swiss format
             swissStandings: null,       // Live standings from eel.tournament_get_swiss_standings()
         };
@@ -1100,12 +1106,38 @@ export default {
                 return;
             }
             
-            // Check if we should skip this match (has humans and skipHumans is enabled)
-            if (this.autoStartSkipHumans && this.matchHasHumans(nextMatch)) {
-                console.log('[Auto-Start] Skipping match with humans:', nextMatch.match_id);
-                // Still start the timer but don't auto-start this match
-                // The user can manually start it or wait for the next match
-                return;
+            // Check if match has humans and handle based on autoStartHumanBehavior
+            if (this.matchHasHumans(nextMatch)) {
+                if (this.autoStartHumanBehavior === 'skip') {
+                    // Find the next match without humans and start the timer for that one
+                    // Temporarily set behavior to 'continue' to find a match without humans
+                    const originalBehavior = this.autoStartHumanBehavior;
+                    this.autoStartHumanBehavior = 'continue';
+                    const nextNonHumanMatch = this.findNextAutoStartMatch();
+                    this.autoStartHumanBehavior = originalBehavior;
+                    
+                    if (nextNonHumanMatch) {
+                        this.selectedMatchId = nextNonHumanMatch.match_id;
+                        this.autoStartCountdown = this.autoStartInterval;
+                        
+                        this.autoStartTimer = setInterval(() => {
+                            this.autoStartCountdown--;
+                            
+                            if (this.autoStartCountdown <= 0) {
+                                this.clearAutoStartTimer();
+                                this.startSelectedMatch();
+                            }
+                        }, 1000);
+                    } else {
+                        // No more matches without humans, pause auto-start
+                        this.autoStartEnabled = false;
+                    }
+                    return;
+                } else if (this.autoStartHumanBehavior === 'pause') {
+                    // Don't start the timer - wait for user to manually start
+                    return;
+                }
+                // 'continue' - proceed with auto-starting this match
             }
             
             // Start countdown
@@ -1129,9 +1161,14 @@ export default {
                     if (match.completed) continue;
                     if (!match.participant1 || !match.participant2) continue;
                     
-                    // Check if we should skip matches with humans
-                    if (this.autoStartSkipHumans && this.matchHasHumans(match)) {
-                        continue;
+                    // Check if match has humans
+                    if (this.matchHasHumans(match)) {
+                        if (this.autoStartHumanBehavior === 'skip') {
+                            continue;  // Skip this match, keep looking
+                        } else if (this.autoStartHumanBehavior === 'pause') {
+                            return null;  // Pause auto-start
+                        }
+                        // 'continue' - proceed with this match
                     }
                     
                     return match;
@@ -1144,9 +1181,13 @@ export default {
                     if (match.completed) continue;
                     if (!match.participant1 || !match.participant2) continue;
                     
-                    // Check if we should skip matches with humans
-                    if (this.autoStartSkipHumans && this.matchHasHumans(match)) {
-                        continue;
+                    // Check if match has humans
+                    if (this.matchHasHumans(match)) {
+                        if (this.autoStartHumanBehavior === 'skip') {
+                            continue;
+                        } else if (this.autoStartHumanBehavior === 'pause') {
+                            return null;
+                        }
                     }
                     
                     return match;
@@ -1200,12 +1241,118 @@ export default {
                 this.startSelectedMatch();
             }
         },
-        
-        showMatchCompleteModal() {
-            if (!this.currentMatch) return;
-            this.$bvModal.show('match-result-modal');
+
+        async stopMatch() {
+            if (!this.matchInProgress) return;
+            
+            if (!confirm('Stop the current match? This will abort the match and allow you to try again.')) {
+                return;
+            }
+            
+            try {
+                const result = await eel.tournament_stop_match()();
+                const response = JSON.parse(result);
+                
+                if (response.error) {
+                    alert('Error stopping match: ' + response.error);
+                    return;
+                }
+                
+                // Clear match in progress state
+                this.matchInProgress = null;
+                this.currentMatch = null;
+                
+                // Clear polling interval if it exists
+                if (this.matchPollingInterval) {
+                    clearInterval(this.matchPollingInterval);
+                    this.matchPollingInterval = null;
+                }
+                
+                // Clear auto-start timer if active
+                if (this.autoStartTimer) {
+                    clearInterval(this.autoStartTimer);
+                    this.autoStartTimer = null;
+                    this.autoStartCountdown = null;
+                }
+            } catch (error) {
+                alert('Error stopping match: ' + error);
+            }
         },
-        
+
+        async openRocketLeague() {
+            try {
+                const result = await eel.open_rocket_league()();
+                const response = JSON.parse(result);
+                
+                if (response.error) {
+                    alert('Error opening Rocket League: ' + response.error);
+                    return;
+                }
+            } catch (error) {
+                alert('Error opening Rocket League: ' + error);
+            }
+        },
+
+        showHumanInfoModal() {
+            // Get the current tournament settings (does not require a match to be in progress)
+            // Note: tournamentState.match_settings is a flat dict of mutators, not nested under 'mutators'
+            const rawSettings = this.tournamentState?.match_settings || {};
+            
+            // Transform flat mutators dict to nested structure for template compatibility
+            this.currentMatchSettings = {
+                map: rawSettings.map || 'Default',
+                mutators: {
+                    match_length: rawSettings.match_length || '5 Minutes',
+                    max_score: rawSettings.max_score || '5 Goals',
+                    game_speed: rawSettings.game_speed || 'Default',
+                    boost_amount: rawSettings.boost_amount || 'Default',
+                    rumble: rawSettings.rumble || 'None',
+                    demolish: rawSettings.demolish || 'Default'
+                }
+            };
+            
+            // Get the next match from tournament state if available (for player count info)
+            let match = null;
+            if (this.tournamentState) {
+                const allMatches = [...(this.tournamentState.matches || []), ...(this.tournamentState.losers_bracket_matches || [])];
+                match = allMatches.find(m => !m.completed && m.participant1 && m.participant2);
+            }
+            
+            // Count players from the next available match, or use team_size to calculate expected players
+            if (match) {
+                // Check team-based structure (team1/team2 with participants array)
+                if (match.team1?.participants && match.team2?.participants) {
+                    this.currentTeam1Count = match.team1.participants.length;
+                    this.currentTeam2Count = match.team2.participants.length;
+                } else if (match.participant1 && match.participant2) {
+                    // 1v1 structure - each participant is a single player
+                    this.currentTeam1Count = 1;
+                    this.currentTeam2Count = 1;
+                } else {
+                    // Fallback to team_size
+                    const teamSize = this.tournamentState?.team_size || 1;
+                    this.currentTeam1Count = teamSize;
+                    this.currentTeam2Count = teamSize;
+                }
+                this.currentHumanCount = this.currentTeam1Count + this.currentTeam2Count;
+            } else {
+                // No match available - use team_size from tournament config to calculate expected players
+                if (this.tournamentState) {
+                    const teamSize = this.tournamentState.team_size || 1;
+                    // Each match has 2 teams with team_size players each
+                    this.currentHumanCount = teamSize * 2;
+                    this.currentTeam1Count = teamSize;
+                    this.currentTeam2Count = teamSize;
+                } else {
+                    this.currentHumanCount = 0;
+                    this.currentTeam1Count = 0;
+                    this.currentTeam2Count = 0;
+                }
+            }
+            
+            this.$bvModal.show('human-info-modal');
+        },
+
         async onMatchClick(match) {
             if (match.completed) return;
             if (!match.participant1 || !match.participant2) return;
@@ -1315,40 +1462,30 @@ export default {
         },
         
         loadSavedTournaments() {
-            console.log('[Tournament] loadSavedTournaments called');
             // Load list of saved tournaments from backend
             try {
                 if (eel.tournament_get_saved_list) {
                     const saved = eel.tournament_get_saved_list()();
                     saved.then(result => {
-                        const parsed = JSON.parse(result);
-                        console.log('[Tournament] Saved tournaments loaded:', parsed.length, 'items');
-                        this.savedTournaments = parsed;
+                        this.savedTournaments = JSON.parse(result);
                     });
                 } else {
-                    console.error('[Tournament] eel.tournament_get_saved_list is not defined');
+                    this.savedTournaments = [];
                 }
             } catch (error) {
-                console.error('[Tournament] Error loading saved tournaments:', error);
                 this.savedTournaments = [];
             }
         },
         
         loadSavedTournament(tournament) {
-            console.log('[Tournament] loadSavedTournament called for:', tournament.name, tournament.tournament_id);
             // Load the tournament from backend by ID
             if (eel.tournament_load_from_id) {
                 eel.tournament_load_from_id(tournament.tournament_id)().then(result => {
-                    console.log('[Tournament] load_from_id returned:', result.substring(0, 200));
                     const state = JSON.parse(result);
                     if (state.error) {
-                        console.error('[Tournament] Error from backend:', state.error);
                         alert('Error loading tournament: ' + state.error);
                     } else {
-                        console.log('[Tournament] Setting tournamentState from loadSavedTournament:', state.name);
-                        console.log('[Tournament] Before: tournamentState was', this.tournamentState ? this.tournamentState.name : 'null');
                         this.tournamentState = state;
-                        console.log('[Tournament] After: tournamentState is', this.tournamentState ? this.tournamentState.name : 'null');
                         this.refreshTeamBalance();
                         this.refreshStats();
                         this.refreshSwissStandings();
@@ -1497,6 +1634,12 @@ export default {
 
         // Shared polling helper used by both the direct and staging flows.
         startMatchPolling(matchId) {
+            // Clear any existing polling interval first
+            if (this.matchPollingInterval) {
+                clearInterval(this.matchPollingInterval);
+                this.matchPollingInterval = null;
+            }
+            
             const pollInterval = setInterval(async () => {
                 try {
                     const freshState = await eel.tournament_get_state()();
@@ -1522,6 +1665,7 @@ export default {
                         this.matchInProgress = null;
                         this.currentMatch = null;
                         clearInterval(pollInterval);
+                        this.matchPollingInterval = null;
                         this.refreshTeamBalance();
                         this.refreshStats();
                         this.refreshSwissStandings();
@@ -1529,10 +1673,10 @@ export default {
                         this.onMatchComplete();
                     }
                 } catch (e) {
-                    console.log('Polling error:', e);
                 }
             }, 1000);
-            setTimeout(() => { clearInterval(pollInterval); }, 300000);
+            this.matchPollingInterval = pollInterval;
+            setTimeout(() => { clearInterval(pollInterval); this.matchPollingInterval = null; }, 300000);
         },
 
         // ------------------------------------------------------------------
@@ -1903,9 +2047,6 @@ export default {
     },
     
     mounted() {
-        console.log('[Tournament] mounted() called');
-        console.log('[Tournament] this.tournamentState =', this.tournamentState ? this.tournamentState.name : 'null');
-        console.log('[Tournament] this.$el =', this.$el ? this.$el.outerHTML.substring(0, 200) : 'null');
         // Draw bracket connectors after initial render
         this.$nextTick(() => {
             this.drawBracketConnectors();
@@ -1935,7 +2076,6 @@ export default {
         // Watch for tournament state changes and redraw connectors
         tournamentState: {
             handler(newVal, oldVal) {
-                console.log('[Tournament] tournamentState changed: old=', oldVal ? oldVal.name : 'null', 'new=', newVal ? newVal.name : 'null');
                 this.$nextTick(() => {
                     this.drawBracketConnectors();
                 });

@@ -26,9 +26,6 @@
             <b-button @click="saveAsTemplate" variant="outline-secondary" v-if="!matchInProgress">
                 <b-icon icon="bookmark"></b-icon> Save as Template
             </b-button>
-            <b-button @click="showMatchCompleteModal" variant="success" v-if="matchInProgress">
-                <b-icon icon="check-circle"></b-icon> Match Complete
-            </b-button>
         </div>
     </div>
 
@@ -40,6 +37,12 @@
                       size="md"
                       title="Start the selected match (press Enter to start) or next available match">
                 <b-icon icon="play-fill"></b-icon> Start Match
+            </b-button>
+            <b-button @click="openRocketLeague" variant="info" size="md" v-if="tournamentState && !tournamentState.completed && !matchInProgress">
+                <b-icon icon="play-circle"></b-icon> Open Rocket League
+            </b-button>
+            <b-button @click="showHumanInfoModal" variant="outline-info" size="sm" v-if="tournamentState && !tournamentState.completed && !matchInProgress">
+                <b-icon icon="info-circle"></b-icon> Human Match Info
             </b-button>
             <div class="match-control-hint" v-if="selectedMatchId">
                 <b-icon icon="check-circle-fill" variant="success"></b-icon> Match selected
@@ -63,10 +66,17 @@
                     <b-dropdown-item @click="autoStartInterval = 60" :active="autoStartInterval === 60">1 minute</b-dropdown-item>
                     <b-dropdown-item @click="autoStartInterval = 120" :active="autoStartInterval === 120">2 minutes</b-dropdown-item>
                 </b-dropdown>
-                <label class="skip-humans-label ml-2">
-                    <input type="checkbox" v-model="autoStartSkipHumans">
-                    <span>Only auto-start non-human matches</span>
-                </label>
+                <b-dropdown size="sm" variant="outline-secondary" text="Human Matches" class="ml-2">
+                    <b-dropdown-item @click="autoStartHumanBehavior = 'continue'" :active="autoStartHumanBehavior === 'continue'">
+                        Start Match
+                    </b-dropdown-item>
+                    <b-dropdown-item @click="autoStartHumanBehavior = 'pause'" :active="autoStartHumanBehavior === 'pause'">
+                        Pause Auto-Start
+                    </b-dropdown-item>
+                    <b-dropdown-item @click="autoStartHumanBehavior = 'skip'" :active="autoStartHumanBehavior === 'skip'">
+                        Skip Match
+                    </b-dropdown-item>
+                </b-dropdown>
             </div>
             <div class="auto-start-countdown" v-if="autoStartEnabled && autoStartCountdown !== null">
                 <b-icon icon="hourglass-split" variant="info"></b-icon>
@@ -91,6 +101,19 @@
             </b-button>
             <b-button @click="cancelStaging" variant="secondary" size="sm">
                 Cancel
+            </b-button>
+        </div>
+    </div>
+
+    <!-- Stop Match Button -->
+    <div class="stop-match-banner" v-if="matchInProgress">
+        <b-icon icon="stop-circle" font-scale="1.2" variant="danger"></b-icon>
+        <div class="stop-match-text">
+            <strong>Match in progress</strong> — Click Stop to abort and free up the server.
+        </div>
+        <div class="stop-match-actions">
+            <b-button @click="stopMatch" variant="danger" size="sm">
+                <b-icon icon="stop-fill"></b-icon> Stop Match
             </b-button>
         </div>
     </div>

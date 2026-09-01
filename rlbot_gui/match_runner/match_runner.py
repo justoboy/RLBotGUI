@@ -20,6 +20,7 @@ from rlbot_gui.match_runner.custom_maps import (
 )
 
 sm: SetupManager = None
+shutdown_requested: bool = False
 
 
 def create_player_config(bot: dict, human_index_tracker: IncrementingInteger):
@@ -253,13 +254,19 @@ def start_match_helper(bot_list: List[dict], match_settings: dict, launcher_pref
     # Poll for match end and collect final results
     try:
         from rlbot.utils.structures.game_data_struct import GameTickPacket
+        import time
         final_packet = None
         while True:
+            # Check if shutdown was requested - exit immediately if so
+            if shutdown_requested:
+                return []
+            
             sm.try_recieve_agent_metadata()
             # Check if match has ended by getting the current packet
             try:
                 packet = GameTickPacket()
-                sm.game_interface.fresh_live_data_packet(packet, 1000, 0)
+                # Use a shorter timeout (100ms) and check shutdown_requested more frequently
+                sm.game_interface.fresh_live_data_packet(packet, 100, 0)
                 if packet.game_info.is_match_ended:
                     final_packet = packet
                     break
@@ -270,8 +277,10 @@ def start_match_helper(bot_list: List[dict], match_settings: dict, launcher_pref
             if not sm.has_started:
                 break
                 
-            import time
-            time.sleep(0.1)
+            # CRITICAL: Use eel.sleep() instead of time.sleep() to allow eel requests
+            # (like shut_down_match) to be processed during polling. time.sleep() blocks
+            # the entire thread including eel's request handler.
+            eel.sleep(0.05)  # Check every 50ms and yield to eel event loop
         
         # Return final packet data if available
         if final_packet is not None:
@@ -290,8 +299,17 @@ def start_match_helper(bot_list: List[dict], match_settings: dict, launcher_pref
 
 
 def do_infinite_loop_content():
+    """
+    Called by the main thread in gui.py's event loop.
+    This function must yield to the eel server to allow eel calls to be processed.
+    """
     if sm is not None and sm.has_started:
         sm.try_recieve_agent_metadata()
+    
+    # CRITICAL: Yield to eel server to allow eel.expose calls to be processed.
+    # Without this, the eel web server blocks and all eel calls hang.
+    import eel
+    eel.sleep(0.001)  # Yield for 1ms - enough to process eel requests
 
 
 def hot_reload_bots():
@@ -300,7 +318,55 @@ def hot_reload_bots():
 
 
 def shut_down():
+    global shutdown_requested
     if sm is not None:
-        sm.shut_down(time_limit=5, kill_all_pids=True)
+        try:
+            # Set flag to signal main thread to exit polling loop
+            shutdown_requested = True
+            
+            sm.shut_down(time_limit=5, kill_all_pids=True)
+            
+            # Reset flag after shutdown completes
+            shutdown_requested = False
+        except RuntimeError as e:
+            if "dictionary changed size during iteration" in str(e):
+                # This is a known race condition in RLBot's kill_bot_processes
+                # The match is shutting down, so we can ignore this error
+                shutdown_requested = False
+            else:
+                import traceback
+                traceback.print_exc()
+                shutdown_requested = False
+        except Exception as e:
+            shutdown_requested = False
     else:
-        print("There gotta be some setup manager already")
+        pass  # SetupManager not initialized - nothing to shut down
+
+
+@eel.expose
+def shut_down_match() -> str:
+    """
+    Shut down the current match's SetupManager.
+    Called when user clicks Stop Match button.
+    
+    Returns:
+        JSON string with status
+    """
+    import json
+    import threading
+    
+    # Run shutdown in a separate thread to avoid blocking the eel response
+    # The main thread may be blocked waiting for match completion polling
+    def run_shutdown():
+        try:
+            shut_down()
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+    
+    # Start shutdown in background thread
+    shutdown_thread = threading.Thread(target=run_shutdown, daemon=True)
+    shutdown_thread.start()
+    
+    # Return success immediately - the actual shutdown happens in the background
+    return json.dumps({'success': True, 'message': 'Match stop initiated'})

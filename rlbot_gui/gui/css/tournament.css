@@ -1206,12 +1206,12 @@
    - Butterfly shape: matches converge toward finals
    ============================================================ */
 
-/* Bracket tree: rounds flow horizontally (overrides noscroll-flex column) */
+/* Bracket tree: brackets stack vertically (Winners on top, Losers below) */
 .bracket-tree {
-    flex-direction: row;
+    flex-direction: column;
     align-items: stretch;
-    overflow-x: auto;
-    overflow-y: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
     gap: 0;
     position: relative;
 }
@@ -1228,14 +1228,14 @@
 }
 
 /* Each bracket section (Winners / Losers) is a vertical flex column
-   that fills the available height so its rounds can stretch. */
+    that fills the available width so its rounds can stretch. */
 .bracket-section {
     display: flex;
     flex-direction: column;
-    flex: 1;
+    flex: 0 0 auto;
     min-width: 0;
-    height: 100%;
-    margin-bottom: 0;
+    width: 100%;
+    margin-bottom: 30px;
     position: relative;
     overflow: hidden;
 }

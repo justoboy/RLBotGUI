@@ -270,7 +270,7 @@ def assign_random_team_names(teams: List[Team]) -> None:
 def generate_team_bracket(
     teams: List[Team],
     tournament_format: str
-) -> Tuple[List[Match], List[Match]]:
+) -> Tuple[List[Match], List[Match], Optional[Match]]:
     """
     Generate a bracket between teams.
 
@@ -298,11 +298,12 @@ def generate_team_bracket(
         stand_ins.append(stand_in)
 
     losers_matches: List[Match] = []
+    grand_final_match: Optional[Match] = None
 
     if tournament_format == 'single_elimination':
         matches, _ = generate_single_elimination_bracket(stand_ins)
     elif tournament_format == 'double_elimination':
-        matches, losers_matches, _ = generate_double_elimination_bracket(stand_ins)
+        matches, losers_matches, grand_final_match, _ = generate_double_elimination_bracket(stand_ins)
     elif tournament_format == 'round_robin':
         matches = generate_round_robin_bracket(stand_ins)
     elif tournament_format == 'swiss':
@@ -317,8 +318,10 @@ def generate_team_bracket(
         _attach_teams(match, team_by_id)
     for match in losers_matches:
         _attach_teams(match, team_by_id)
+    if grand_final_match:
+        _attach_teams(grand_final_match, team_by_id)
 
-    return matches, losers_matches
+    return matches, losers_matches, grand_final_match
 
 
 def _attach_teams(match: Match, team_by_id: dict) -> None:

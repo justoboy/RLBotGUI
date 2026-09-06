@@ -233,7 +233,19 @@ export default {
         },
         losersBracketMatches() {
             if (!this.tournamentState) return [];
-            return this.tournamentState.losers_bracket_matches || [];
+            
+            // Get the base LB matches
+            const lbMatches = this.tournamentState.losers_bracket_matches || [];
+            
+            // For double elimination, also include the Grand Final (L-prefixed match in matches array)
+            if (this.tournamentState.format === 'double_elimination') {
+                const grandFinal = this.tournamentState.matches.find(m => m.match_id.startsWith('L'));
+                if (grandFinal) {
+                    return [...lbMatches, grandFinal];
+                }
+            }
+            
+            return lbMatches;
         },
         losersBracketMatchesByRound() {
             if (!this.losersBracketMatches || this.losersBracketMatches.length === 0) return [];
@@ -246,7 +258,9 @@ export default {
                 rounds[match.round_num].push(match);
             }
             
-            return Object.values(rounds);
+            // Sort rounds by round_num and return as array
+            const sortedRoundNums = Object.keys(rounds).map(Number).sort((a, b) => a - b);
+            return sortedRoundNums.map(rn => ({ roundNum: rn, matches: rounds[rn] }));
         },
         // Butterfly layout: split each round into a left wing and a right wing,
         // with the final round (1 match) in the center.
@@ -257,8 +271,15 @@ export default {
                 return { left: [], center: null, right: [] };
             }
             
+            // For double elimination, only include Winners Bracket matches (W-prefixed)
+            // Losers Bracket matches (L-prefixed) are displayed separately
+            const isDoubleElim = this.tournamentState.format === 'double_elimination';
+            const matchesToInclude = isDoubleElim 
+                ? this.tournamentState.matches.filter(m => m.match_id.startsWith('W'))
+                : this.tournamentState.matches;
+            
             const rounds = {};
-            for (const match of this.tournamentState.matches) {
+            for (const match of matchesToInclude) {
                 if (!rounds[match.round_num]) rounds[match.round_num] = [];
                 rounds[match.round_num].push(match);
             }
@@ -348,7 +369,158 @@ export default {
         },
         lbMatchPositions() {
             if (!this.tournamentState || !this.losersBracketMatches) return {};
-            return this.computeBracketPositions(this.losersBracketMatches);
+            return this.computeLosersBracketPositions;
+        },
+        
+        // Compute vertical positions for Losers Bracket matches.
+        // Unlike the standard computeBracketPositions, this method handles the case where
+        // a later LB round has MORE matches than its feeder (due to WB losers entering).
+        // Strategy:
+        // 1. Position Round 1 evenly across 0-100%
+        // 2. For each subsequent round:
+        //    - First, position matches that have feeders (at midpoint of feeders)
+        //    - Then, for remaining "entry point" matches (no LB feeders), distribute them
+        //      evenly across the available space, biased toward their WB feeder positions
+        computeLosersBracketPositions() {
+            const matches = Array.isArray(this.losersBracketMatches) ? this.losersBracketMatches : [];
+            const positions = {};
+            if (!matches || matches.length === 0) return positions;
+
+            const byId = {};
+            for (const m of matches) byId[m.match_id] = m;
+
+            // Group by round number, sorted ascending.
+            const roundNums = [...new Set(matches.map(m => m.round_num))].sort((a, b) => a - b);
+            const byRound = {};
+            for (const rn of roundNums) {
+                byRound[rn] = matches.filter(m => m.round_num === rn);
+            }
+
+            // Round 1: spread evenly across the full height.
+            const first = byRound[roundNums[0]];
+            const n = first.length;
+            for (let i = 0; i < n; i++) {
+                positions[first[i].match_id] = ((i + 0.5) / n) * 100;
+            }
+
+            // For each subsequent round, process matches in two passes:
+            // Pass 1: Matches that have LB feeders (position at midpoint of feeders)
+            // Pass 2: Entry point matches (no LB feeders - distribute evenly with WB bias)
+            for (let r = 1; r < roundNums.length; r++) {
+                const roundMatches = byRound[roundNums[r]];
+                
+                // Separate matches into two groups
+                const withFeeders = [];
+                const entryPoints = [];
+                
+                for (const m of roundMatches) {
+                    if (positions[m.match_id] !== undefined) continue;
+                    
+                    // Check for LB feeders (losers_bracket_matches that point here)
+                    const lbFeeders = matches.filter(f =>
+                        f.next_match_id === m.match_id &&
+                        byRound[f.round_num] &&
+                        byRound[f.round_num].includes(m) === false // Ensure it's from a previous round
+                    );
+                    
+                    if (lbFeeders.length > 0) {
+                        withFeeders.push({ match: m, feeders: lbFeeders });
+                    } else {
+                        entryPoints.push(m);
+                    }
+                }
+                
+                // Pass 1: Position matches with feeders at midpoint of their feeders
+                for (const {match, feeders} of withFeeders) {
+                    const sum = feeders.reduce((acc, f) => {
+                        const pos = positions[f.match_id];
+                        return acc + (pos !== undefined ? pos : 50);
+                    }, 0);
+                    positions[match.match_id] = sum / feeders.length;
+                }
+                
+                // Pass 2: For entry point matches, try to use WB feeder positions if available
+                // If no WB feeders, distribute evenly across the round's space
+                const entryPointCount = entryPoints.length;
+                
+                // First, check if there's a "shadow" from the previous LB round
+                // (i.e., the number of matches in the previous round)
+                const prevRoundMatches = r > 0 ? byRound[roundNums[r - 1]] : [];
+                const prevRoundMaxPos = prevRoundMatches.length > 0
+                    ? Math.max(...prevRoundMatches.map(m => positions[m.match_id] || 50))
+                    : 100;
+                const prevRoundMinPos = prevRoundMatches.length > 0
+                    ? Math.min(...prevRoundMatches.map(m => positions[m.match_id] || 50))
+                    : 0;
+                
+                // For each entry point, check if it has a WB feeder (loser_next_match_id)
+                const entryPointsWithWbFeeder = [];
+                const entryPointsWithoutWbFeeder = [];
+                
+                for (const ep of entryPoints) {
+                    const wbFeeders = this.tournamentState?.matches?.filter(
+                        f => f.loser_next_match_id === ep.match_id
+                    ) || [];
+                    
+                    if (wbFeeders.length > 0 && wbFeeders.some(f => positions[f.match_id] !== undefined)) {
+                        // Calculate midpoint of WB feeders
+                        const sum = wbFeeders.reduce((acc, f) => {
+                            const pos = positions[f.match_id];
+                            return acc + (pos !== undefined ? pos : 50);
+                        }, 0);
+                        const avgPos = sum / wbFeeders.filter(f => positions[f.match_id] !== undefined).length;
+                        entryPointsWithWbFeeder.push({ match: ep, pos: avgPos });
+                    } else {
+                        entryPointsWithoutWbFeeder.push(ep);
+                    }
+                }
+                
+                // Position entry points with WB feeders at their weighted position
+                for (const {match, pos} of entryPointsWithWbFeeder) {
+                    positions[match.match_id] = pos;
+                }
+                
+                // Position entry points without WB feeders using gap-based distribution.
+                // Each entry point is placed at the midpoint of the largest available gap
+                // among already-positioned matches in this round.
+                if (entryPointsWithoutWbFeeder.length > 0) {
+                    const positioned = roundMatches
+                        .filter(m => positions[m.match_id] !== undefined)
+                        .map(m => positions[m.match_id])
+                        .sort((a, b) => a - b);
+
+                    for (const ep of entryPointsWithoutWbFeeder) {
+                        // Find the largest gap between positioned matches (and edges).
+                        // bestSize starts at -1 so the first real gap always wins
+                        // (starting at 100 would make no real gap ever replace the default).
+                        let bestGapStart = 0, bestGapEnd = 100, bestSize = -1;
+                        let prev = 0;
+                        for (const pos of positioned) {
+                            const size = pos - prev;
+                            if (size > bestSize) {
+                                bestSize = size;
+                                bestGapStart = prev;
+                                bestGapEnd = pos;
+                            }
+                            prev = pos;
+                        }
+                        const tailSize = 100 - prev;
+                        if (tailSize > bestSize) {
+                            bestSize = tailSize;
+                            bestGapStart = prev;
+                            bestGapEnd = 100;
+                        }
+
+                        const gapMid = (bestGapStart + bestGapEnd) / 2;
+                        positions[ep.match_id] = gapMid;
+                        // Insert into positioned list (keep sorted for next iteration)
+                        positioned.push(gapMid);
+                        positioned.sort((a, b) => a - b);
+                    }
+                }
+            }
+            
+            return positions;
         },
         standings() {
             if (!this.tournamentState || this.tournamentState.format !== 'round_robin') return [];
@@ -531,7 +703,14 @@ export default {
                 const wbSection = this.$refs.wb_section;
                 const wbScrollContainer = wbSection && wbSection.querySelector('.bracket-rounds');
                 if (wbSvg && wbScrollContainer && this.tournamentState && this.tournamentState.matches) {
-                    this.drawSectionConnectors(wbSvg, wbScrollContainer, this.tournamentState.matches, 'rgba(0, 217, 255, 0.55)');
+                    // Only draw connectors for Winners Bracket matches (W-prefixed).
+                    // The WB Finals match has next_match_id pointing to the Grand Final
+                    // (L-prefixed), which is rendered in the Losers Bracket section.
+                    // Including it here would draw a stray connector across sections.
+                    const wbMatches = this.tournamentState.format === 'double_elimination'
+                        ? this.tournamentState.matches.filter(m => m.match_id.startsWith('W'))
+                        : this.tournamentState.matches;
+                    this.drawSectionConnectors(wbSvg, wbScrollContainer, wbMatches, 'rgba(0, 217, 255, 0.55)');
                 }
 
                 // Losers bracket connectors (double elimination)
@@ -627,6 +806,57 @@ export default {
             
             // Calculate this round's position from the end
             const roundsFromEnd = totalRounds - roundNum + 1;
+            
+            // Name the last few rounds specially
+            if (roundsFromEnd === 1) {
+                return 'Finals';
+            } else if (roundsFromEnd === 2) {
+                return 'Semi-Finals';
+            } else if (roundsFromEnd === 3) {
+                return 'Quarter-Finals';
+            } else {
+                return `Round ${roundNum}`;
+            }
+        },
+        getWinnersBracketRoundName(roundNum, roundMatches) {
+            if (!roundNum || !roundMatches) return `Round ${roundNum || 1}`;
+            
+            // Get total number of Winners Bracket rounds
+            if (!this.tournamentState || !this.tournamentState.matches) {
+                return `Round ${roundNum}`;
+            }
+            
+            // Filter to only Winners Bracket matches (W-prefixed)
+            const wbMatches = this.tournamentState.matches.filter(m => m.match_id.startsWith('W'));
+            if (wbMatches.length === 0) {
+                return `Round ${roundNum}`;
+            }
+            
+            const wbRounds = new Set(wbMatches.map(m => m.round_num));
+            const totalWBRounds = Math.max(...wbRounds);
+            
+            // Only the last WB round (WB Finals) gets a special name: "Semi-Finals"
+            // All other WB rounds are just "Round N"
+            if (roundNum === totalWBRounds) {
+                return 'Semi-Finals';
+            } else {
+                return `Round ${roundNum}`;
+            }
+        },
+        getLosersBracketRoundName(roundNum, roundMatches) {
+            if (!roundNum || !roundMatches) return `Round ${roundNum || 1}`;
+            
+            // Get total number of losers bracket rounds
+            if (!this.losersBracketMatches || this.losersBracketMatches.length === 0) {
+                return `Round ${roundNum}`;
+            }
+            
+            // Find total LB rounds by getting the max round number from LB matches
+            const lbRounds = new Set(this.losersBracketMatches.map(m => m.round_num));
+            const totalLBRounds = Math.max(...lbRounds);
+            
+            // Calculate this round's position from the end
+            const roundsFromEnd = totalLBRounds - roundNum + 1;
             
             // Name the last few rounds specially
             if (roundsFromEnd === 1) {
@@ -1154,47 +1384,170 @@ export default {
         },
         
         // Find the next match that can be auto-started
+        // For double elimination, prefer LB matches that are ready, only play WB matches
+        // when LB matches are waiting for WB losers
         findNextAutoStartMatch() {
-            // Check winners bracket matches
-            for (const roundMatches of this.matchesByRound) {
-                for (const match of roundMatches) {
-                    if (match.completed) continue;
-                    if (!match.participant1 || !match.participant2) continue;
-                    
-                    // Check if match has humans
-                    if (this.matchHasHumans(match)) {
-                        if (this.autoStartHumanBehavior === 'skip') {
-                            continue;  // Skip this match, keep looking
-                        } else if (this.autoStartHumanBehavior === 'pause') {
-                            return null;  // Pause auto-start
-                        }
-                        // 'continue' - proceed with this match
-                    }
-                    
-                    return match;
-                }
-            }
+            const isDoubleElim = this.tournamentState && this.tournamentState.format === 'double_elimination';
             
-            // Check losers bracket matches
-            for (const roundMatches of this.losersBracketMatchesByRound) {
-                for (const match of roundMatches) {
-                    if (match.completed) continue;
-                    if (!match.participant1 || !match.participant2) continue;
-                    
-                    // Check if match has humans
-                    if (this.matchHasHumans(match)) {
-                        if (this.autoStartHumanBehavior === 'skip') {
-                            continue;
-                        } else if (this.autoStartHumanBehavior === 'pause') {
-                            return null;
+            if (isDoubleElim) {
+                // First, check if any LB matches are ready (have both participants)
+                // This ensures we complete LB rounds as much as possible before switching to WB
+                for (const roundData of this.losersBracketMatchesByRound) {
+                    for (const match of roundData.matches) {
+                        if (match.completed) continue;
+                        if (!match.participant1 || !match.participant2) continue;
+                        
+                        // Check if match has humans
+                        if (this.matchHasHumans(match)) {
+                            if (this.autoStartHumanBehavior === 'skip') {
+                                continue;
+                            } else if (this.autoStartHumanBehavior === 'pause') {
+                                return null;
+                            }
                         }
+                        
+                        return match;
                     }
-                    
-                    return match;
+                }
+                
+                // No LB matches ready, check WB matches
+                for (const roundMatches of this.matchesByRound) {
+                    for (const match of roundMatches) {
+                        // Skip L-prefixed matches (Grand Final) - they're handled in LB section
+                        if (match.match_id.startsWith('L')) continue;
+                        if (match.completed) continue;
+                        if (!match.participant1 || !match.participant2) continue;
+                        
+                        // Check if match has humans
+                        if (this.matchHasHumans(match)) {
+                            if (this.autoStartHumanBehavior === 'skip') {
+                                continue;
+                            } else if (this.autoStartHumanBehavior === 'pause') {
+                                return null;
+                            }
+                        }
+                        
+                        return match;
+                    }
+                }
+            } else {
+                // Check winners bracket matches (single elimination, round robin, swiss)
+                for (const roundMatches of this.matchesByRound) {
+                    for (const match of roundMatches) {
+                        if (match.completed) continue;
+                        if (!match.participant1 || !match.participant2) continue;
+                        
+                        // Check if match has humans
+                        if (this.matchHasHumans(match)) {
+                            if (this.autoStartHumanBehavior === 'skip') {
+                                continue;  // Skip this match, keep looking
+                            } else if (this.autoStartHumanBehavior === 'pause') {
+                                return null;  // Pause auto-start
+                            }
+                            // 'continue' - proceed with this match
+                        }
+                        
+                        return match;
+                    }
+                }
+                
+                // Check losers bracket matches (for double elimination when not using interleaved order)
+                for (const roundMatches of this.losersBracketMatchesByRound) {
+                    for (const match of roundMatches) {
+                        if (match.completed) continue;
+                        if (!match.participant1 || !match.participant2) continue;
+                        
+                        // Check if match has humans
+                        if (this.matchHasHumans(match)) {
+                            if (this.autoStartHumanBehavior === 'skip') {
+                                continue;
+                            } else if (this.autoStartHumanBehavior === 'pause') {
+                                return null;
+                            }
+                        }
+                        
+                        return match;
+                    }
                 }
             }
             
             return null;
+        },
+        
+        // Get interleaved round order for double elimination
+        // Returns array of { isWinnersBracket, roundNum } in execution order
+        // Correct order: WB1 -> LB1 -> WB2 -> LB2 -> LB3 -> WB3 -> LB4 -> Grand Final
+        // The key insight: LB3 (Quarter-Finals) determines who faces the WB Finals loser,
+        // so it must run BEFORE WB Finals
+        _getInterleavedRoundOrder() {
+            const result = [];
+            
+            // Get all WB round numbers (only W-prefixed matches from matches array)
+            const wbRounds = this.tournamentState.matches
+                .filter(m => m.match_id.startsWith('W'))
+                .map(m => m.round_num)
+                .filter((v, i, a) => a.indexOf(v) === i)  // unique
+                .sort((a, b) => a - b);
+            
+            // Get all LB round numbers from losers_bracket_matches (includes Grand Final now)
+            const lbRounds = this.losersBracketMatches
+                .map(m => m.round_num)
+                .filter((v, i, a) => a.indexOf(v) === i)  // unique
+                .sort((a, b) => a - b);
+            
+            // Check if Grand Final exists (L-prefixed match in matches array)
+            const grandFinal = this.tournamentState.matches.find(m => m.match_id.startsWith('L'));
+            
+            // Find the max WB round (which is the WB Finals)
+            const maxWbRound = wbRounds.length > 0 ? wbRounds[wbRounds.length - 1] : 0;
+            
+            // For standard double elimination with 8 players (3 WB rounds, 4 LB rounds + GF):
+            // WB1 -> LB1 -> WB2 -> LB2 -> LB3 -> WB3 -> LB4 -> Grand Final
+            // The pattern:
+            // - After WB1: add LB1
+            // - After WB2: add LB2, LB3 (LB3 runs before WB3)
+            // - After WB3 (Finals): add LB4, then Grand Final
+            
+            let lbIndex = 0;
+            
+            for (let i = 0; i < wbRounds.length; i++) {
+                const wbRound = wbRounds[i];
+                const isLastWbRound = wbRound === maxWbRound;
+                
+                // Add the WB round
+                result.push({ isWinnersBracket: true, roundNum: wbRound });
+                
+                if (isLastWbRound) {
+                    // After WB Finals, add all remaining LB rounds up to (but not including) Grand Final
+                    // Then add Grand Final
+                    const gfRoundNum = grandFinal ? grandFinal.round_num : 999;
+                    while (lbIndex < lbRounds.length && lbRounds[lbIndex] < gfRoundNum) {
+                        result.push({ isWinnersBracket: false, roundNum: lbRounds[lbIndex] });
+                        lbIndex++;
+                    }
+                    if (grandFinal) {
+                        result.push({ isWinnersBracket: true, roundNum: grandFinal.round_num });
+                    }
+                } else {
+                    // After WB Round N (not last), add LB rounds
+                    // For WB1: add LB1 (1 round)
+                    // For WB2: add LB2, LB3 (2 rounds)
+                    // The pattern: add (wbRound) LB rounds after WB Round N
+                    const lbRoundsToAdd = wbRound;
+                    for (let j = 0; j < lbRoundsToAdd && lbIndex < lbRounds.length; j++) {
+                        result.push({ isWinnersBracket: false, roundNum: lbRounds[lbIndex] });
+                        lbIndex++;
+                    }
+                }
+            }
+            
+            // Add any remaining LB rounds (shouldn't happen in standard bracket, but handle edge cases)
+            while (lbIndex < lbRounds.length) {
+                result.push({ isWinnersBracket: false, roundNum: lbRounds[lbIndex] });
+                lbIndex++;
+            }
+            
+            return result;
         },
         
         // Check if a match has human participants

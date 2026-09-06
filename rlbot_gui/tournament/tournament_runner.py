@@ -150,18 +150,22 @@ def tournament_new(name: str, tournament_format: str, participants_json: str, ma
         # Form teams (random assignment by default) and generate team bracket
         teams = form_teams_random(participants, team_size, allow_duplicates=allow_duplicates)
         CURRENT_TOURNAMENT.teams = teams
-        matches, losers_matches = generate_team_bracket(teams, tournament_format)
+        matches, losers_matches, grand_final_match = generate_team_bracket(teams, tournament_format)
         CURRENT_TOURNAMENT.matches = matches
         CURRENT_TOURNAMENT.losers_bracket_matches = losers_matches
+        if grand_final_match:
+            CURRENT_TOURNAMENT.matches.append(grand_final_match)
     else:
         # 1v1: existing participant-based bracket
         if tournament_format == 'single_elimination':
             matches, num_rounds = generate_single_elimination_bracket(participants)
             CURRENT_TOURNAMENT.matches = matches
         elif tournament_format == 'double_elimination':
-            winners_matches, losers_matches, num_rounds = generate_double_elimination_bracket(participants)
+            winners_matches, losers_matches, grand_final_match, num_rounds = generate_double_elimination_bracket(participants)
             CURRENT_TOURNAMENT.matches = winners_matches
             CURRENT_TOURNAMENT.losers_bracket_matches = losers_matches
+            if grand_final_match:
+                CURRENT_TOURNAMENT.matches.append(grand_final_match)
         elif tournament_format == 'round_robin':
             matches = generate_round_robin_bracket(participants)
             CURRENT_TOURNAMENT.matches = matches
@@ -222,9 +226,11 @@ def tournament_form_teams(assignment_method: str = 'random', team_names_json: st
     CURRENT_TOURNAMENT.teams = teams
 
     # Regenerate the bracket with the new teams
-    matches, losers_matches = generate_team_bracket(teams, CURRENT_TOURNAMENT.format)
+    matches, losers_matches, grand_final_match = generate_team_bracket(teams, CURRENT_TOURNAMENT.format)
     CURRENT_TOURNAMENT.matches = matches
     CURRENT_TOURNAMENT.losers_bracket_matches = losers_matches
+    if grand_final_match:
+        CURRENT_TOURNAMENT.matches.append(grand_final_match)
     CURRENT_TOURNAMENT.current_round = 1
     CURRENT_TOURNAMENT.completed = False
     CURRENT_TOURNAMENT.winner = None
@@ -969,7 +975,11 @@ def tournament_record_result(match_id: str, winner_name: str, score_json: str) -
     match.winner = winner
     match.score = score
     match.completed = True
-
+    
+    # For double elimination, populate the Losers Bracket match with the loser
+    if CURRENT_TOURNAMENT.format == 'double_elimination' and match.loser_next_match_id:
+        _populate_losers_bracket_match(match, winner)
+    
     # For team-based matches, record the winning team and update W/L
     winning_team = None
     losing_team = None
@@ -1006,6 +1016,151 @@ def tournament_record_result(match_id: str, winner_name: str, score_json: str) -
     
     # Save state
     return tournament_save_state()
+
+
+def _populate_losers_bracket_match(completed_match: Match, winner: Participant) -> None:
+    """
+    Populate a Losers Bracket match with the loser from a Winners Bracket match.
+    
+    When a Winners Bracket match completes, the loser advances to their
+    corresponding Losers Bracket match. This function finds that match
+    and populates it with the loser.
+    
+    Args:
+        completed_match: The completed Winners Bracket match
+        winner: The winner of the match (the loser is the other participant)
+    """
+    global CURRENT_TOURNAMENT
+    
+    if CURRENT_TOURNAMENT is None or CURRENT_TOURNAMENT.format != 'double_elimination':
+        return
+    
+    loser_next_match_id = completed_match.loser_next_match_id
+    if not loser_next_match_id:
+        return
+    
+    # Find the Losers Bracket match
+    lb_match = None
+    for m in CURRENT_TOURNAMENT.losers_bracket_matches:
+        if m.match_id == loser_next_match_id:
+            lb_match = m
+            break
+    
+    if lb_match is None:
+        print(f"DEBUG: _populate_losers_bracket_match - could not find LB match {loser_next_match_id}")
+        return
+    
+    # Determine the loser
+    loser = None
+    if completed_match.participant1 and completed_match.participant1 != winner:
+        loser = completed_match.participant1
+    elif completed_match.participant2 and completed_match.participant2 != winner:
+        loser = completed_match.participant2
+    
+    if loser is None:
+        print(f"DEBUG: _populate_losers_bracket_match - could not determine loser from match {completed_match.match_id}")
+        return
+    
+    # Populate the Losers Bracket match with the loser
+    if lb_match.participant1 is None:
+        lb_match.participant1 = loser
+        print(f"DEBUG: _populate_losers_bracket_match - {loser.name} assigned to {lb_match.match_id} as participant1")
+    elif lb_match.participant2 is None:
+        lb_match.participant2 = loser
+        print(f"DEBUG: _populate_losers_bracket_match - {loser.name} assigned to {lb_match.match_id} as participant2")
+    else:
+        print(f"DEBUG: _populate_losers_bracket_match - {lb_match.match_id} already has both participants")
+        return
+    
+    # For team-based matches, attach the losing team to the Losers Bracket match
+    if CURRENT_TOURNAMENT.teams:
+        losing_team = None
+        for t in CURRENT_TOURNAMENT.teams:
+            if t.team_id == loser.participant_id:
+                losing_team = t
+                break
+        if losing_team is not None:
+            if lb_match.participant1 is loser and lb_match.team1 is None:
+                lb_match.team1 = losing_team
+            elif lb_match.participant2 is loser and lb_match.team2 is None:
+                lb_match.team2 = losing_team
+    
+    # Check if this LB match now has a bye situation (only 1 participant and no more feeders expected)
+    # If so, auto-advance the single participant
+    _check_and_handle_lb_bye(lb_match)
+
+
+def _check_and_handle_lb_bye(lb_match: Match) -> None:
+    """
+    Check if a Losers Bracket match has a bye situation and auto-advance if needed.
+    
+    A bye occurs in LB when:
+    1. The match has exactly 1 participant
+    2. All potential feeders have been exhausted (no more participants will arrive)
+    
+    In this case, the single participant auto-advances to the next match.
+    """
+    global CURRENT_TOURNAMENT
+    
+    if CURRENT_TOURNAMENT is None:
+        return
+    
+    # Only check matches with exactly 1 participant
+    has_p1 = lb_match.participant1 is not None
+    has_p2 = lb_match.participant2 is not None
+    
+    if has_p1 and has_p2:
+        # Match has both participants - no bye
+        return
+    
+    if not has_p1 and not has_p2:
+        # Match has no participants - nothing to do
+        return
+    
+    # Match has exactly 1 participant - check if all feeders are exhausted
+    
+    # Count total expected feeders (WB matches that feed into this LB match)
+    # Only count WB matches that are actual matches (not byes) as they are the ones that produce losers
+    wb_feeder_count = 0
+    completed_wb_feeder_count = 0
+    for m in CURRENT_TOURNAMENT.matches:
+        if m.loser_next_match_id == lb_match.match_id:
+            # Only count this feeder if it's an actual match (not a bye)
+            # Bye matches are completed but never produce losers
+            is_actual_match = (m.participant1 is not None and m.participant2 is not None)
+            if is_actual_match:
+                wb_feeder_count += 1
+                if m.completed:
+                    completed_wb_feeder_count += 1
+    
+    # Check if any previous LB match feeds into this match
+    lb_feeder_count = 0
+    completed_lb_feeder_count = 0
+    for m in CURRENT_TOURNAMENT.losers_bracket_matches:
+        if m.next_match_id == lb_match.match_id:
+            lb_feeder_count += 1
+            if m.completed:
+                completed_lb_feeder_count += 1
+    
+    # Determine if all feeders are exhausted
+    # All WB feeders are exhausted if all WB matches that feed here are completed
+    wb_exhausted = (wb_feeder_count == 0) or (completed_wb_feeder_count == wb_feeder_count)
+    
+    # All LB feeders are exhausted if all LB matches that feed here are completed
+    lb_exhausted = (lb_feeder_count == 0) or (completed_lb_feeder_count == lb_feeder_count)
+    
+    # If all feeders are exhausted and we have 1 participant, it's a bye
+    if wb_exhausted and lb_exhausted:
+        single_participant = lb_match.participant1 if has_p1 else lb_match.participant2
+        print(f"DEBUG: _check_and_handle_lb_bye - {lb_match.match_id} has bye, advancing {single_participant.name}")
+        
+        # Mark the match as completed with the single participant as winner
+        lb_match.completed = True
+        lb_match.winner = single_participant
+        
+        # Advance to next match
+        if lb_match.next_match_id:
+            advance_winner(lb_match, single_participant)
 
 
 # ---------------------------------------------------------------------------
@@ -1136,17 +1291,25 @@ def is_tournament_final_match(match: Match) -> bool:
     Check if this is the final match of the tournament.
     
     A match is the final if the winner doesn't advance to another match
-    (i.e., next_match_id is None).
+    (i.e., next_match_id is None and loser_next_match_id is None).
+    
+    For double elimination:
+    - The Grand Final is the final match where the winner is the tournament champion
     """
-    # If the match has no next match, it's the final
-    is_final = match.next_match_id is None
-    print(f"DEBUG: is_tournament_final_match({match.match_id}) = {is_final} (next_match_id={match.next_match_id})")
+    # If the match has no next match and no loser_next_match_id, it's the final
+    is_final = match.next_match_id is None and match.loser_next_match_id is None
+    print(f"DEBUG: is_tournament_final_match({match.match_id}) = {is_final} (next_match_id={match.next_match_id}, loser_next_match_id={match.loser_next_match_id})")
     return is_final
 
 
 def advance_winner(match: Match, winner: Participant) -> None:
     """
     Advance the winner to their next match.
+    
+    For double elimination:
+    - Winners Bracket match winner advances to next WB match
+    - Losers Bracket match winner advances to next LB match or Grand Final
+    - Grand Final winner is the tournament champion
     """
     global CURRENT_TOURNAMENT
     
@@ -1160,14 +1323,13 @@ def advance_winner(match: Match, winner: Participant) -> None:
     
     print(f"DEBUG: advance_winner({match.match_id}) - advancing {winner.name} to match {next_match_id}")
     
-    # Find next match
+    # Find next match in both winners and losers bracket
     next_match = None
     for m in CURRENT_TOURNAMENT.matches:
         if m.match_id == next_match_id:
             next_match = m
             break
     
-    # Check losers bracket for double elimination
     if next_match is None:
         for m in CURRENT_TOURNAMENT.losers_bracket_matches:
             if m.match_id == next_match_id:
@@ -1186,7 +1348,7 @@ def advance_winner(match: Match, winner: Participant) -> None:
     else:
         print(f"DEBUG: advance_winner({match.match_id}) - next match {next_match_id} already has both participants")
         return
-
+    
     # For team-based matches, attach the winning team to the next match
     if CURRENT_TOURNAMENT.teams:
         winning_team = None
@@ -1213,6 +1375,7 @@ def _handle_bye_situation(next_match: Match) -> None:
     A bye occurs when:
     1. A match has only 1 participant and the other slot feeds from a completed bye match
     2. A match has only 1 participant and there's no other feeder (odd number of participants)
+    3. A match has only 1 participant and all pending feeders are WB bye matches that won't produce losers
     
     In both cases, the single participant should automatically advance.
     """
@@ -1232,9 +1395,36 @@ def _handle_bye_situation(next_match: Match) -> None:
             advance_winner(completed_feeder, completed_feeder.winner)
         else:
             # No completed unprocessed feeder - check if there's no other feeder at all
-            # (this is a bye in a later round)
+            # (this is a bye in a later round) OR all pending feeders are WB byes that won't produce losers
             all_feeders = _get_all_feeders(next_match)
-            if len(all_feeders) == 0:
+            
+            # Check if there are any pending (uncompleted) feeders that will actually produce participants
+            has_pending_real_feeders = False
+            for feeder in all_feeders:
+                # For WB matches, check if they will produce a loser
+                if feeder.loser_next_match_id == next_match.match_id:
+                    # A WB match is a "true bye" if it has exactly 1 participant (will produce no loser)
+                    # A WB match that has 0 participants is "not yet populated" and will produce a loser
+                    has_p1 = feeder.participant1 is not None
+                    has_p2 = feeder.participant2 is not None
+                    
+                    if has_p1 and has_p2:
+                        # Actual match - will produce a loser when completed
+                        if not feeder.completed:
+                            has_pending_real_feeders = True
+                            break
+                    elif not has_p1 and not has_p2:
+                        # Not yet populated - will eventually have participants and produce a loser
+                        has_pending_real_feeders = True
+                        break
+                    # else: has exactly 1 participant - this is a bye, won't produce a loser
+                
+                # For LB matches, only count uncompleted feeders
+                if feeder.next_match_id == next_match.match_id and not feeder.completed:
+                    has_pending_real_feeders = True
+                    break
+            
+            if len(all_feeders) == 0 or not has_pending_real_feeders:
                 # No other feeder - this is a bye in a later round
                 # The single participant advances automatically
                 print(f"DEBUG: _handle_bye_situation - later round bye for {next_match.participant1.name} in {next_match.match_id}")
@@ -1251,7 +1441,34 @@ def _handle_bye_situation(next_match: Match) -> None:
             advance_winner(completed_feeder, completed_feeder.winner)
         else:
             all_feeders = _get_all_feeders(next_match)
-            if len(all_feeders) == 0:
+            
+            # Check if there are any pending (uncompleted) feeders that will actually produce participants
+            has_pending_real_feeders = False
+            for feeder in all_feeders:
+                # For WB matches, check if they will produce a loser
+                if feeder.loser_next_match_id == next_match.match_id:
+                    # A WB match is a "true bye" if it has exactly 1 participant (will produce no loser)
+                    # A WB match that has 0 participants is "not yet populated" and will produce a loser
+                    has_p1 = feeder.participant1 is not None
+                    has_p2 = feeder.participant2 is not None
+                    
+                    if has_p1 and has_p2:
+                        # Actual match - will produce a loser when completed
+                        if not feeder.completed:
+                            has_pending_real_feeders = True
+                            break
+                    elif not has_p1 and not has_p2:
+                        # Not yet populated - will eventually have participants and produce a loser
+                        has_pending_real_feeders = True
+                        break
+                    # else: has exactly 1 participant - this is a bye, won't produce a loser
+                
+                # For LB matches, only count uncompleted feeders
+                if feeder.next_match_id == next_match.match_id and not feeder.completed:
+                    has_pending_real_feeders = True
+                    break
+            
+            if len(all_feeders) == 0 or not has_pending_real_feeders:
                 print(f"DEBUG: _handle_bye_situation - later round bye for {next_match.participant2.name} in {next_match.match_id}")
                 next_match.completed = True
                 next_match.winner = next_match.participant2
@@ -1262,15 +1479,22 @@ def _handle_bye_situation(next_match: Match) -> None:
 def _get_all_feeders(match: Match) -> List[Match]:
     """
     Get all matches that feed into the given match.
+    
+    In double elimination, matches can receive participants from two sources:
+    - Winners Bracket losers via loser_next_match_id
+    - Losers Bracket winners via next_match_id
+    
+    This function checks both fields to correctly identify all feeder matches,
+    preventing premature bye triggering when a match is waiting for a WB loser.
     """
     feeders = []
     for m in CURRENT_TOURNAMENT.matches:
-        if m.next_match_id == match.match_id:
+        if m.next_match_id == match.match_id or m.loser_next_match_id == match.match_id:
             feeders.append(m)
     
     # Also check losers bracket
     for m in CURRENT_TOURNAMENT.losers_bracket_matches:
-        if m.next_match_id == match.match_id:
+        if m.next_match_id == match.match_id or m.loser_next_match_id == match.match_id:
             feeders.append(m)
     
     return feeders
@@ -1376,16 +1600,20 @@ def tournament_randomize_seeding() -> str:
         teams = form_teams_random(shuffled, CURRENT_TOURNAMENT.team_size,
                                  allow_duplicates=CURRENT_TOURNAMENT.allow_duplicates)
         CURRENT_TOURNAMENT.teams = teams
-        matches, losers_matches = generate_team_bracket(teams, CURRENT_TOURNAMENT.format)
+        matches, losers_matches, grand_final_match = generate_team_bracket(teams, CURRENT_TOURNAMENT.format)
         CURRENT_TOURNAMENT.matches = matches
         CURRENT_TOURNAMENT.losers_bracket_matches = losers_matches
+        if grand_final_match:
+            CURRENT_TOURNAMENT.matches.append(grand_final_match)
     elif CURRENT_TOURNAMENT.format == 'single_elimination':
         matches, num_rounds = generate_single_elimination_bracket(shuffled)
         CURRENT_TOURNAMENT.matches = matches
     elif CURRENT_TOURNAMENT.format == 'double_elimination':
-        winners_matches, losers_matches, num_rounds = generate_double_elimination_bracket(shuffled)
+        winners_matches, losers_matches, grand_final_match, num_rounds = generate_double_elimination_bracket(shuffled)
         CURRENT_TOURNAMENT.matches = winners_matches
         CURRENT_TOURNAMENT.losers_bracket_matches = losers_matches
+        if grand_final_match:
+            CURRENT_TOURNAMENT.matches.append(grand_final_match)
     elif CURRENT_TOURNAMENT.format == 'round_robin':
         matches = generate_round_robin_bracket(shuffled)
         CURRENT_TOURNAMENT.matches = matches
@@ -2008,9 +2236,11 @@ def tournament_form_teams_with_pairings(pairings_json: str, team_names_json: str
     CURRENT_TOURNAMENT.teams = teams
 
     # Regenerate the bracket with the new teams
-    matches, losers_matches = generate_team_bracket(teams, CURRENT_TOURNAMENT.format)
+    matches, losers_matches, grand_final_match = generate_team_bracket(teams, CURRENT_TOURNAMENT.format)
     CURRENT_TOURNAMENT.matches = matches
     CURRENT_TOURNAMENT.losers_bracket_matches = losers_matches
+    if grand_final_match:
+        CURRENT_TOURNAMENT.matches.append(grand_final_match)
     CURRENT_TOURNAMENT.current_round = 1
     CURRENT_TOURNAMENT.completed = False
     CURRENT_TOURNAMENT.winner = None

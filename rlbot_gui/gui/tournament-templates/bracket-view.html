@@ -10,7 +10,7 @@
             <!-- Left wing: rounds flow from outer (round 1) to inner (semi-finals) -->
             <template v-for="wingRound in butterflyRounds.left">
                 <div :key="'lb-' + wingRound.roundNum" class="bracket-round butterfly-wing-left" :class="{ 'current-round': wingRound.roundNum === currentRound }" ref="wb_rounds">
-                    <h6 class="round-title">{{ getRoundName(wingRound.roundNum, wingRound.matches) }}</h6>
+                    <h6 class="round-title">{{ getWinnersBracketRoundName(wingRound.roundNum, wingRound.matches) }}</h6>
                     <div class="bracket-round-matches" ref="wb_rm">
                         <div v-for="match in wingRound.matches" :key="match.match_id"
                               ref="wb_matches"
@@ -51,7 +51,7 @@
 
             <!-- Center: finals -->
             <div v-if="butterflyRounds.center" :key="'center'" class="bracket-round butterfly-center" :class="{ 'current-round': butterflyRounds.center.roundNum === currentRound }">
-                <h6 class="round-title">{{ getRoundName(butterflyRounds.center.roundNum, butterflyRounds.center.matches) }}</h6>
+                <h6 class="round-title">{{ getWinnersBracketRoundName(butterflyRounds.center.roundNum, butterflyRounds.center.matches) }}</h6>
                 <div class="bracket-round-matches" ref="wb_rm">
                     <div v-for="match in butterflyRounds.center.matches" :key="match.match_id"
                           ref="wb_matches"
@@ -91,7 +91,7 @@
             <!-- Right wing: rounds flow from inner (semi-finals) to outer (round 1) -->
             <template v-for="wingRound in butterflyRounds.right">
                 <div :key="'rb-' + wingRound.roundNum" class="bracket-round butterfly-wing-right" :class="{ 'current-round': wingRound.roundNum === currentRound }" ref="wb_rounds">
-                    <h6 class="round-title">{{ getRoundName(wingRound.roundNum, wingRound.matches) }}</h6>
+                    <h6 class="round-title">{{ getWinnersBracketRoundName(wingRound.roundNum, wingRound.matches) }}</h6>
                     <div class="bracket-round-matches" ref="wb_rm">
                         <div v-for="match in wingRound.matches" :key="match.match_id"
                               ref="wb_matches"
@@ -138,10 +138,10 @@
             <!-- SVG connector overlay for losers bracket -->
             <svg ref="lbConnectorSvg" class="bracket-connectors" aria-hidden="true"></svg>
 
-            <div v-for="(roundMatches, roundIndex) in losersBracketMatchesByRound" :key="'lb-' + roundIndex" class="bracket-round" ref="lb_rounds">
-                <h6 class="round-title">Losers Round {{ roundIndex + 1 }}</h6>
+            <div v-for="roundData in losersBracketMatchesByRound" :key="'lb-' + roundData.roundNum" class="bracket-round" ref="lb_rounds">
+                <h6 class="round-title">{{ getLosersBracketRoundName(roundData.roundNum, roundData.matches) }}</h6>
                 <div class="bracket-round-matches" ref="lb_rm">
-                    <div v-for="match in roundMatches" :key="match.match_id"
+                    <div v-for="match in roundData.matches" :key="match.match_id"
                           ref="lb_matches"
                           class="bracket-match losers-match butterfly-match"
                           :class="{ 'completed': match.completed, 'active': isMatchActive(match), 'in-progress': isMatchInProgress(match), 'selected': selectedMatchId === match.match_id }"

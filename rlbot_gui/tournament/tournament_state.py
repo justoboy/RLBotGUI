@@ -92,6 +92,9 @@ class Match:
     team1: Optional[Team] = None
     team2: Optional[Team] = None
     winner_team: Optional[Team] = None
+    # Phase 4: per-player stats captured from the final game tick packet
+    # Each entry: {name, team, is_bot, goals, own_goals, assists, saves, shots, demolitions}
+    player_stats: Optional[List[Dict[str, Any]]] = None
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -106,7 +109,8 @@ class Match:
             'loser_next_match_id': self.loser_next_match_id,
             'team1': self.team1.to_dict() if self.team1 else None,
             'team2': self.team2.to_dict() if self.team2 else None,
-            'winner_team': self.winner_team.to_dict() if self.winner_team else None
+            'winner_team': self.winner_team.to_dict() if self.winner_team else None,
+            'player_stats': self.player_stats
         }
     
     @staticmethod
@@ -132,6 +136,8 @@ class Match:
             match.team2 = Team.from_dict(data['team2'])
         if data.get('winner_team'):
             match.winner_team = Team.from_dict(data['winner_team'])
+        if data.get('player_stats'):
+            match.player_stats = data['player_stats']
         return match
 
 
@@ -158,7 +164,12 @@ class TournamentState:
     # Phase 4: Swiss format fields
     swiss_rounds: int = 0  # Number of Swiss rounds (0 = not Swiss)
     swiss_tiebreakers: List[str] = field(default_factory=list)  # Ordered tiebreaker keys
-    swiss_playoff_scheduled: bool = False  # Whether a playoff match has been added
+    swiss_playoff_scheduled: bool = False  # Whether a playoff match has been scheduled
+    # Phase 4: Tournament map selection
+    map: Optional[str] = None  # Selected map ID (e.g., 'DFHStadium', 'BeckwithPark')
+    # Phase 4: Game mode (match main GUI options). Match behavior is owned by
+    # the main GUI settings, not the tournament.
+    game_mode: str = 'Soccer'  # e.g. 'Soccer', 'Hoops', 'Dropshot', 'Hockey', 'Rumble', 'Heatseeker', 'Gridiron'
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -179,7 +190,9 @@ class TournamentState:
             'allow_duplicates': self.allow_duplicates,
             'swiss_rounds': self.swiss_rounds,
             'swiss_tiebreakers': self.swiss_tiebreakers,
-            'swiss_playoff_scheduled': self.swiss_playoff_scheduled
+            'swiss_playoff_scheduled': self.swiss_playoff_scheduled,
+            'map': self.map,
+            'game_mode': self.game_mode
         }
     
     @staticmethod
@@ -196,7 +209,9 @@ class TournamentState:
             allow_duplicates=data.get('allow_duplicates', False),
             swiss_rounds=data.get('swiss_rounds', 0),
             swiss_tiebreakers=data.get('swiss_tiebreakers', []),
-            swiss_playoff_scheduled=data.get('swiss_playoff_scheduled', False)
+            swiss_playoff_scheduled=data.get('swiss_playoff_scheduled', False),
+            map=data.get('map'),
+            game_mode=data.get('game_mode', 'Soccer')
         )
         for p_data in data.get('participants', []):
             state.participants.append(Participant.from_dict(p_data))

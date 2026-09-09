@@ -29,6 +29,26 @@
         </div>
     </div>
 
+    <!-- Phase 4: Match History tab switcher -->
+    <div class="history-tab-bar">
+        <b-button
+            @click="switchHistoryTab('bracket')"
+            variant="outline-primary"
+            size="sm"
+            :class="{ 'active-tab': activeHistoryTab === 'bracket' }"
+        >
+            <b-icon icon="diagram-3"></b-icon> Bracket
+        </b-button>
+        <b-button
+            @click="switchHistoryTab('history')"
+            variant="outline-primary"
+            size="sm"
+            :class="{ 'active-tab': activeHistoryTab === 'history' }"
+        >
+            <b-icon icon="clock-history"></b-icon> Match History
+        </b-button>
+    </div>
+
     <!-- Phase 4: Start Match Button + Auto-Start Controls -->
     <div class="match-control-toolbar" v-if="tournamentState && !tournamentState.completed && !matchInProgress">
         <div class="match-control-left">
@@ -199,7 +219,7 @@
         </div>
 
         <!-- Bracket View for Single/Double Elimination -->
-        <div class="bracket-view noscroll-flex" v-if="tournamentState.format !== 'round_robin' && tournamentState.format !== 'swiss'">
+        <div class="bracket-view noscroll-flex" v-if="activeHistoryTab === 'bracket' && tournamentState.format !== 'round_robin' && tournamentState.format !== 'swiss'">
             <div class="bracket-header">
                 <h4>{{ formatLabel }} Bracket</h4>
                 <b-button @click="randomizeSeeding" variant="outline-primary" size="sm" v-if="!tournamentState.completed">
@@ -213,11 +233,11 @@
         <!-- Round Robin View (inlined from round-robin.html, carries v-else-if) -->
         {{ROUND_ROBIN}}
 
-        <!-- Swiss View (inlined from swiss-view.html, carries v-else) -->
+        <!-- Swiss View (inlined from swiss-view.html, carries v-else-if) -->
         {{SWISS_VIEW}}
 
         <!-- Statistics panel -->
-        <div class="stats-panel" v-if="statsData && statsData.completed_matches > 0">
+        <div class="stats-panel" v-if="activeHistoryTab === 'bracket' && statsData && statsData.completed_matches > 0">
             <div class="stats-panel-header">
                 <h5>
                     <b-icon icon="bar-chart"></b-icon> Tournament Statistics
@@ -262,6 +282,95 @@
                     </tr>
                 </tbody>
             </table>
+        </div>
+
+        <!-- Phase 4: Match History panel -->
+        <div class="match-history-panel" v-if="matchHistory && activeHistoryTab === 'history'">
+            <div class="match-history-header">
+                <h5>
+                    <b-icon icon="clock-history"></b-icon> Match History
+                </h5>
+                <span class="text-muted small">
+                    {{ matchHistory.completed_matches }}/{{ matchHistory.total_matches }} matches completed
+                </span>
+                <div class="match-history-actions">
+                    <b-button @click="exportHistoryCSV" variant="outline-secondary" size="sm">
+                        <b-icon icon="filetype-csv"></b-icon> Export CSV
+                    </b-button>
+                    <b-button @click="exportHistoryJSON" variant="outline-secondary" size="sm">
+                        <b-icon icon="file-earmark-text"></b-icon> Export JSON
+                    </b-button>
+                </div>
+            </div>
+            <div class="match-history-rounds">
+                <div v-for="round in matchHistory.rounds" :key="historyRoundKey(round)" class="match-history-round">
+                    <div class="match-history-round-header" @click="toggleHistoryRound(round)">
+                        <h6>
+                            <span v-if="round.bracket === 'winners'" class="history-bracket-badge history-bracket-wb">Winners Bracket</span>
+                            <span v-else-if="round.bracket === 'losers'" class="history-bracket-badge history-bracket-lb">Losers Bracket</span>
+                            {{ getRoundName(round.round_num, round.bracket) }}
+                        </h6>
+                        <b-icon :icon="expandedHistoryRounds[historyRoundKey(round)] ? 'chevron-down' : 'chevron-right'"></b-icon>
+                    </div>
+                    <div class="match-history-round-matches" v-show="expandedHistoryRounds[historyRoundKey(round)]">
+                        <div v-for="match in round.matches" :key="match.match_id" class="match-history-entry">
+                            <div class="match-history-score-line">
+                                <span class="match-team-name">{{ match.team1_name || match.participant1_name || 'Team 1' }}</span>
+                                <span class="match-score" v-if="match.score">
+                                    {{ match.score[0] }} - {{ match.score[1] }}
+                                </span>
+                                <span class="match-team-name">{{ match.team2_name || match.participant2_name || 'Team 2' }}</span>
+                            </div>
+                            <div class="match-history-meta">
+                                <span v-if="match.completed" class="match-winner-badge">
+                                    <b-icon icon="trophy-fill" variant="warning"></b-icon> {{ match.winner_name }} wins
+                                </span>
+                                <span v-else class="match-pending-badge">Pending</span>
+                            </div>
+                            <!-- Expandable detailed stats -->
+                            <div class="match-history-details" v-show="expandedHistoryMatches[match.match_id]">
+                                <div v-if="match.player_stats && match.player_stats.length > 0" class="player-stats-table-wrapper">
+                                    <table class="player-stats-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Player</th>
+                                                <th>Team</th>
+                                                <th>Goals</th>
+                                                <th>Assists</th>
+                                                <th>Saves</th>
+                                                <th>Shots</th>
+                                                <th>Demolitions</th>
+                                                <th>Own Goals</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr v-for="(ps, idx) in match.player_stats" :key="idx">
+                                                <td>
+                                                    <span :class="ps.team === 0 ? 'team-blue-text' : 'team-orange-text'">{{ ps.name }}</span>
+                                                    <span v-if="!ps.is_bot" class="human-badge">HUMAN</span>
+                                                </td>
+                                                <td>{{ ps.team }}</td>
+                                                <td>{{ ps.goals }}</td>
+                                                <td>{{ ps.assists }}</td>
+                                                <td>{{ ps.saves }}</td>
+                                                <td>{{ ps.shots }}</td>
+                                                <td>{{ ps.demolitions }}</td>
+                                                <td>{{ ps.own_goals }}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <p v-else class="text-muted small mb-0">No detailed stats recorded for this match.</p>
+                            </div>
+                            <!-- Expand button -->
+                            <button class="btn btn-sm btn-link" @click="toggleHistoryMatch(match.match_id)">
+                                <b-icon :icon="expandedHistoryMatches[match.match_id] ? 'chevron-up' : 'plus-circle'"></b-icon>
+                                {{ expandedHistoryMatches[match.match_id] ? 'Hide Stats' : 'Show Stats' }}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>

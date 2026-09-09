@@ -195,7 +195,9 @@ def start_match_helper(bot_list: List[dict], match_settings: dict, launcher_pref
             immediately (used for staging matches that idle in the lobby).
 
     Returns:
-        List of team score dicts on completion, or None if wait_for_completion is False.
+        Dict with 'team_scores' (list of team score dicts) and 'players'
+        (list of per-player stat dicts) on completion, or None if
+        wait_for_completion is False.
     """
     print(bot_list)
     print(match_settings)
@@ -286,13 +288,29 @@ def start_match_helper(bot_list: List[dict], match_settings: dict, launcher_pref
         if final_packet is not None:
             # Extract team scores from the final packet
             team_scores = []
-            for team in final_packet.teams:
+            for i in range(final_packet.num_teams):
+                team = final_packet.teams[i]
                 team_scores.append({
                     'team_index': team.team_index,
                     'score': team.score
                 })
-            return team_scores
-        return []
+            # Extract per-player stats from the final packet (Phase 4: match history)
+            players = []
+            for i in range(final_packet.num_cars):
+                car = final_packet.game_cars[i]
+                players.append({
+                    'name': car.name,
+                    'team': int(car.team),
+                    'is_bot': bool(car.is_bot),
+                    'goals': int(car.score_info.goals),
+                    'own_goals': int(car.score_info.own_goals),
+                    'assists': int(car.score_info.assists),
+                    'saves': int(car.score_info.saves),
+                    'shots': int(car.score_info.shots),
+                    'demolitions': int(car.score_info.demolitions)
+                })
+            return {'team_scores': team_scores, 'players': players}
+        return {'team_scores': [], 'players': []}
     except Exception as e:
         print(f"Error polling for match end: {e}")
         return []

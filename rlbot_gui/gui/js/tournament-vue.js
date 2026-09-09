@@ -44,6 +44,189 @@ const MUTATOR_OPTIONS = {
     respawn_time: ['3 Seconds', '2 Seconds', '1 Second', 'Disable Goal Reset']
 };
 
+// Phase 4: Mutator presets — quick-select configurations for common game modes.
+// Each preset maps to a subset of the mutator keys in DEFAULT_MUTATORS.
+// Selecting a preset populates the mutator dropdowns; the user can then
+// adjust individual settings. 'custom' means no preset is applied.
+const MUTATOR_PRESETS = {
+    'standard': {
+        label: 'Standard (Soccer)',
+        game_mode: 'Soccer',
+        mutators: {
+            match_length: '5 Minutes',
+            max_score: '5 Goals',
+            overtime: 'Unlimited',
+            series_length: 'Unlimited',
+            game_speed: 'Default',
+            ball_max_speed: 'Default',
+            ball_type: 'Default',
+            ball_weight: 'Default',
+            ball_size: 'Default',
+            ball_bounciness: 'Default',
+            boost_amount: 'Default',
+            rumble: 'None',
+            boost_strength: '1x',
+            gravity: 'Default',
+            demolish: 'Default',
+            respawn_time: '3 Seconds'
+        }
+    },
+    'rumble': {
+        label: 'Rumble',
+        game_mode: 'Rumble',
+        mutators: {
+            match_length: '5 Minutes',
+            max_score: '5 Goals',
+            overtime: 'Unlimited',
+            series_length: 'Unlimited',
+            game_speed: 'Default',
+            ball_max_speed: 'Default',
+            ball_type: 'Default',
+            ball_weight: 'Default',
+            ball_size: 'Default',
+            ball_bounciness: 'Default',
+            boost_amount: 'Default',
+            rumble: 'Default',
+            boost_strength: '1x',
+            gravity: 'Default',
+            demolish: 'Default',
+            respawn_time: '3 Seconds'
+        }
+    },
+    'hoops': {
+        label: 'Hoops',
+        game_mode: 'Hoops',
+        mutators: {
+            match_length: '5 Minutes',
+            max_score: '5 Goals',
+            overtime: 'Unlimited',
+            series_length: 'Unlimited',
+            game_speed: 'Default',
+            ball_max_speed: 'Default',
+            ball_type: 'Basketball',
+            ball_weight: 'Default',
+            ball_size: 'Default',
+            ball_bounciness: 'High',
+            boost_amount: 'Default',
+            rumble: 'None',
+            boost_strength: '1x',
+            gravity: 'Default',
+            demolish: 'Default',
+            respawn_time: '3 Seconds'
+        }
+    },
+    'spike_rush': {
+        label: 'Spike Rush',
+        game_mode: 'Soccer',
+        mutators: {
+            match_length: '5 Minutes',
+            max_score: '5 Goals',
+            overtime: 'Unlimited',
+            series_length: 'Unlimited',
+            game_speed: 'Default',
+            ball_max_speed: 'Default',
+            ball_type: 'Default',
+            ball_weight: 'Default',
+            ball_size: 'Default',
+            ball_bounciness: 'Default',
+            boost_amount: 'Default',
+            rumble: 'Spike Rush',
+            boost_strength: '1x',
+            gravity: 'Default',
+            demolish: 'Default',
+            respawn_time: '3 Seconds'
+        }
+    },
+    'boomer': {
+        label: 'Boomer (Big Ball)',
+        game_mode: 'Soccer',
+        mutators: {
+            match_length: '5 Minutes',
+            max_score: '5 Goals',
+            overtime: 'Unlimited',
+            series_length: 'Unlimited',
+            game_speed: 'Default',
+            ball_max_speed: 'Default',
+            ball_type: 'Default',
+            ball_weight: 'Default',
+            ball_size: 'Gigantic',
+            ball_bounciness: 'Default',
+            boost_amount: 'Default',
+            rumble: 'None',
+            boost_strength: '1x',
+            gravity: 'Default',
+            demolish: 'Default',
+            respawn_time: '3 Seconds'
+        }
+    },
+    'drop_shot': {
+        label: 'Drop Shot',
+        game_mode: 'Dropshot',
+        mutators: {
+            match_length: '5 Minutes',
+            max_score: '5 Goals',
+            overtime: 'Unlimited',
+            series_length: 'Unlimited',
+            game_speed: 'Default',
+            ball_max_speed: 'Default',
+            ball_type: 'Default',
+            ball_weight: 'Default',
+            ball_size: 'Default',
+            ball_bounciness: 'Default',
+            boost_amount: 'Default',
+            rumble: 'None',
+            boost_strength: '1x',
+            gravity: 'Low',
+            demolish: 'Default',
+            respawn_time: '3 Seconds'
+        }
+    },
+    'snow_day': {
+        label: 'Snow Day (Low Gravity)',
+        game_mode: 'Soccer',
+        mutators: {
+            match_length: '5 Minutes',
+            max_score: '5 Goals',
+            overtime: 'Unlimited',
+            series_length: 'Unlimited',
+            game_speed: 'Default',
+            ball_max_speed: 'Default',
+            ball_type: 'Default',
+            ball_weight: 'Default',
+            ball_size: 'Default',
+            ball_bounciness: 'Low',
+            boost_amount: 'Default',
+            rumble: 'None',
+            boost_strength: '1x',
+            gravity: 'Low',
+            demolish: 'Default',
+            respawn_time: '3 Seconds'
+        }
+    },
+    'hockey': {
+        label: 'Hockey (Puck)',
+        game_mode: 'Hockey',
+        mutators: {
+            match_length: '5 Minutes',
+            max_score: '5 Goals',
+            overtime: 'Unlimited',
+            series_length: 'Unlimited',
+            game_speed: 'Default',
+            ball_max_speed: 'Default',
+            ball_type: 'Puck',
+            ball_weight: 'Default',
+            ball_size: 'Default',
+            ball_bounciness: 'Low',
+            boost_amount: 'Default',
+            rumble: 'None',
+            boost_strength: '1x',
+            gravity: 'Default',
+            demolish: 'Default',
+            respawn_time: '3 Seconds'
+        }
+    }
+};
+
 export default {
     name: 'tournament',
     template: buildTournamentTemplate(),
@@ -65,6 +248,8 @@ export default {
                 human_count: 0,
                 human_names: [],
                 mutators: { ...DEFAULT_MUTATORS },
+                map: '',  // Phase 4: Selected map ID (empty = default/random)
+                game_mode: 'Soccer',  // Phase 4: Game mode for all matches
                 // Phase 4: Swiss format settings
                 swiss_rounds: 0,  // 0 = auto-calculate as ceil(log2(participants))
                 swiss_tiebreakers: ['score_differential', 'goals_scored', 'head_to_head']
@@ -74,6 +259,7 @@ export default {
             savedTournaments: [],
             isSaving: false,
             MUTATOR_OPTIONS: MUTATOR_OPTIONS,
+            MUTATOR_PRESETS: MUTATOR_PRESETS,
             // Phase 3: LAN Match Workflow (staging -> Players Ready -> real match)
             stagingMatchId: null,       // match_id currently in the staging phase
             stagingHumanCount: 0,       // number of humans in the staging match
@@ -110,6 +296,17 @@ export default {
             currentTeam2Count: 0,         // Team 2 player count for info modal
             // Phase 4: Swiss format
             swissStandings: null,       // Live standings from eel.tournament_get_swiss_standings()
+            // Phase 4: Tournament map selection
+            mapOptions: [],             // List of available map IDs from eel.get_match_options()
+            // Phase 4: Game mode options (from eel.get_match_options())
+            gameModeOptions: ['Soccer', 'Hoops', 'Dropshot', 'Hockey', 'Rumble', 'Heatseeker', 'Gridiron'],
+            // Phase 4: Mutator presets
+            selectedPreset: 'custom',   // Currently selected mutator preset key
+            // Phase 4: Match history view
+            matchHistory: null,         // Match history data from eel.tournament_get_match_history()
+            expandedHistoryMatches: {}, // { match_id: true } for expanded stats
+            expandedHistoryRounds: {},  // { round_num: true } for expanded rounds
+            activeHistoryTab: 'bracket' // 'bracket' | 'history'
         };
     },
     computed: {
@@ -792,86 +989,65 @@ export default {
             svg.appendChild(line);
         },
 
-        getRoundName(roundNum, roundMatches) {
-            if (!roundNum || !roundMatches) return `Round ${roundNum || 1}`;
-            
-            // Get total number of rounds
-            if (!this.tournamentState || !this.tournamentState.matches) {
+        // Single source of truth for round naming. `bracket` is 'winners',
+        // 'losers', or undefined (single elimination / swiss / round robin).
+        getRoundName(roundNum, bracket) {
+            if (!this.tournamentState) return `Round ${roundNum}`;
+            const format = this.tournamentState.format;
+
+            // Single elimination: name rounds by position from the END, so any
+            // bracket size labels correctly (e.g. 8 players = 3 rounds:
+            // Quarter-Finals, Semi-Finals, Finals).
+            if (format === 'single_elimination') {
+                const allRounds = (this.tournamentState.matches || []).map(m => m.round_num);
+                if (allRounds.length === 0) return `Round ${roundNum}`;
+                const totalRounds = Math.max(...allRounds);
+                const roundsFromEnd = totalRounds - roundNum + 1;
+                if (roundsFromEnd === 1) return 'Finals';
+                if (roundsFromEnd === 2) return 'Semi-Finals';
+                if (roundsFromEnd === 3) return 'Quarter-Finals';
                 return `Round ${roundNum}`;
             }
-            
-            // Find total rounds by getting the max round number
-            const allRounds = new Set(this.tournamentState.matches.map(m => m.round_num));
-            const totalRounds = Math.max(...allRounds);
-            
-            // Calculate this round's position from the end
-            const roundsFromEnd = totalRounds - roundNum + 1;
-            
-            // Name the last few rounds specially
-            if (roundsFromEnd === 1) {
-                return 'Finals';
-            } else if (roundsFromEnd === 2) {
-                return 'Semi-Finals';
-            } else if (roundsFromEnd === 3) {
-                return 'Quarter-Finals';
-            } else {
+
+            // Double elimination: match the bracket view naming.
+            if (format === 'double_elimination') {
+                if (bracket === 'losers') {
+                    // Losers bracket: name by position from the end
+                    const lbMatches = this.losersBracketMatches || [];
+                    if (lbMatches.length === 0) return `Round ${roundNum}`;
+                    const lbRounds = new Set(lbMatches.map(m => m.round_num));
+                    const totalLBRounds = Math.max(...lbRounds);
+                    const roundsFromEnd = totalLBRounds - roundNum + 1;
+                    if (roundsFromEnd === 1) return 'Finals';
+                    if (roundsFromEnd === 2) return 'Semi-Finals';
+                    if (roundsFromEnd === 3) return 'Quarter-Finals';
+                    return `Round ${roundNum}`;
+                }
+                // Winners bracket: only the last WB round gets a special name
+                const wbMatches = (this.tournamentState.matches || []).filter(m => m.match_id.startsWith('W'));
+                if (wbMatches.length === 0) return `Round ${roundNum}`;
+                const wbRounds = new Set(wbMatches.map(m => m.round_num));
+                const totalWBRounds = Math.max(...wbRounds);
+                if (roundNum === totalWBRounds) return 'Semi-Finals';
                 return `Round ${roundNum}`;
             }
+
+            if (format === 'swiss') {
+                const totalRounds = this.tournamentState.swiss_rounds || 0;
+                return `Round ${roundNum} of ${totalRounds}`;
+            }
+
+            return `Round ${roundNum}`;
         },
         getWinnersBracketRoundName(roundNum, roundMatches) {
-            if (!roundNum || !roundMatches) return `Round ${roundNum || 1}`;
-            
-            // Get total number of Winners Bracket rounds
-            if (!this.tournamentState || !this.tournamentState.matches) {
-                return `Round ${roundNum}`;
-            }
-            
-            // Filter to only Winners Bracket matches (W-prefixed)
-            const wbMatches = this.tournamentState.matches.filter(m => m.match_id.startsWith('W'));
-            if (wbMatches.length === 0) {
-                return `Round ${roundNum}`;
-            }
-            
-            const wbRounds = new Set(wbMatches.map(m => m.round_num));
-            const totalWBRounds = Math.max(...wbRounds);
-            
-            // Only the last WB round (WB Finals) gets a special name: "Semi-Finals"
-            // All other WB rounds are just "Round N"
-            if (roundNum === totalWBRounds) {
-                return 'Semi-Finals';
-            } else {
-                return `Round ${roundNum}`;
-            }
+            return this.getRoundName(roundNum, 'winners');
         },
         getLosersBracketRoundName(roundNum, roundMatches) {
-            if (!roundNum || !roundMatches) return `Round ${roundNum || 1}`;
-            
-            // Get total number of losers bracket rounds
-            if (!this.losersBracketMatches || this.losersBracketMatches.length === 0) {
-                return `Round ${roundNum}`;
-            }
-            
-            // Find total LB rounds by getting the max round number from LB matches
-            const lbRounds = new Set(this.losersBracketMatches.map(m => m.round_num));
-            const totalLBRounds = Math.max(...lbRounds);
-            
-            // Calculate this round's position from the end
-            const roundsFromEnd = totalLBRounds - roundNum + 1;
-            
-            // Name the last few rounds specially
-            if (roundsFromEnd === 1) {
-                return 'Finals';
-            } else if (roundsFromEnd === 2) {
-                return 'Semi-Finals';
-            } else if (roundsFromEnd === 3) {
-                return 'Quarter-Finals';
-            } else {
-                return `Round ${roundNum}`;
-            }
+            return this.getRoundName(roundNum, 'losers');
         },
         getCurrentRoundName() {
             if (!this.tournamentState || !this.tournamentState.matches) return 'Round 1';
-            
+
             // Find the first round with incomplete matches
             const matchesByRoundNum = {};
             for (const match of this.tournamentState.matches) {
@@ -880,20 +1056,19 @@ export default {
                 }
                 matchesByRoundNum[match.round_num].push(match);
             }
-            
+
             const roundNumbers = Object.keys(matchesByRoundNum).map(Number).sort((a, b) => a - b);
-            
+
             for (const roundNum of roundNumbers) {
-                const roundMatches = matchesByRoundNum[roundNum];
-                const hasIncomplete = roundMatches.some(m => !m.completed);
+                const hasIncomplete = matchesByRoundNum[roundNum].some(m => !m.completed);
                 if (hasIncomplete) {
-                    return this.getRoundName(roundNum, roundMatches);
+                    return this.getRoundName(roundNum, 'winners');
                 }
             }
-            
+
             // All rounds complete - show the final round name
             const lastRound = roundNumbers[roundNumbers.length - 1];
-            return this.getRoundName(lastRound, matchesByRoundNum[lastRound]);
+            return this.getRoundName(lastRound, 'winners');
         },
         async showCreateModal() {
             // Force a tick to ensure the modal is rendered
@@ -1006,7 +1181,9 @@ export default {
                     teamSize,
                     allowDuplicates,
                     swissTiebreakersJson,
-                    swissRounds
+                    swissRounds,
+                    this.newTournament.map || '',
+                    this.newTournament.game_mode || 'Soccer'
                 )();
 
                 console.log('[Tournament] tournament_new returned:', result.substring(0, 200));
@@ -1020,7 +1197,8 @@ export default {
                 this.tournamentState = state;
                 console.log('[Tournament] After: tournamentState is', this.tournamentState ? 'set' : 'null');
                 this.selectedParticipants = [];
-                this.newTournament = { name: '', format: 'single_elimination', team_size: 1, allow_duplicates: false, human_count: 0, human_names: [], mutators: { ...DEFAULT_MUTATORS }, swiss_rounds: 0, swiss_tiebreakers: ['score_differential', 'goals_scored', 'head_to_head'] };
+                this.newTournament = { name: '', format: 'single_elimination', team_size: 1, allow_duplicates: false, human_count: 0, human_names: [], mutators: { ...DEFAULT_MUTATORS }, map: '', game_mode: 'Soccer', swiss_rounds: 0, swiss_tiebreakers: ['score_differential', 'goals_scored', 'head_to_head'] };
+                this.selectedPreset = 'custom';
                 this.refreshTeamBalance();
                 this.refreshStats();
                 this.refreshSwissStandings();
@@ -1650,17 +1828,32 @@ export default {
             // Get the current tournament settings (does not require a match to be in progress)
             // Note: tournamentState.match_settings is a flat dict of mutators, not nested under 'mutators'
             const rawSettings = this.tournamentState?.match_settings || {};
-            
+
+            // Phase 4: The map is stored at the top level of tournamentState (not in match_settings).
+            const selectedMap = this.tournamentState?.map || '';
+            const mapDisplay = selectedMap ? this.formatMapName(selectedMap) : 'Default (DFH Stadium)';
+
             // Transform flat mutators dict to nested structure for template compatibility
             this.currentMatchSettings = {
-                map: rawSettings.map || 'Default',
+                map: mapDisplay,
+                game_mode: this.tournamentState?.game_mode || 'Soccer',
                 mutators: {
                     match_length: rawSettings.match_length || '5 Minutes',
                     max_score: rawSettings.max_score || '5 Goals',
+                    overtime: rawSettings.overtime || 'Unlimited',
+                    series_length: rawSettings.series_length || 'Unlimited',
                     game_speed: rawSettings.game_speed || 'Default',
+                    ball_max_speed: rawSettings.ball_max_speed || 'Default',
+                    ball_type: rawSettings.ball_type || 'Default',
+                    ball_weight: rawSettings.ball_weight || 'Default',
+                    ball_size: rawSettings.ball_size || 'Default',
+                    ball_bounciness: rawSettings.ball_bounciness || 'Default',
                     boost_amount: rawSettings.boost_amount || 'Default',
+                    boost_strength: rawSettings.boost_strength || '1x',
                     rumble: rawSettings.rumble || 'None',
-                    demolish: rawSettings.demolish || 'Default'
+                    gravity: rawSettings.gravity || 'Default',
+                    demolish: rawSettings.demolish || 'Default',
+                    respawn_time: rawSettings.respawn_time || '3 Seconds'
                 }
             };
             
@@ -1870,6 +2063,214 @@ export default {
         
         resetMutatorsToDefault() {
             this.newTournament.mutators = { ...DEFAULT_MUTATORS };
+            this.selectedPreset = 'custom';
+        },
+
+        // Phase 4: When the game mode changes, sync the map and mutator preset
+        // to the mode's canonical defaults (e.g. Hoops → Dunk House, Gridiron →
+        // Champions Field NFL). The operator can still adjust anything afterwards.
+        onGameModeChange(mode) {
+            const modeDefaults = {
+                'Soccer': { map: 'DFHStadium', preset: 'standard' },
+                'Hoops': { map: 'Hoops_DunkHouse', preset: 'hoops' },
+                'Dropshot': { map: 'DropShot_Core707', preset: 'drop_shot' },
+                'Hockey': { map: 'DFHStadium', preset: 'hockey' },
+                'Rumble': { map: 'DFHStadium', preset: 'rumble' },
+                'Heatseeker': { map: 'DFHStadium', preset: 'standard' },
+                'Gridiron': { map: 'ChampionsField_NFL', preset: 'standard' }
+            };
+            const def = modeDefaults[mode] || modeDefaults['Soccer'];
+            this.newTournament.map = def.map;
+            this.applyPreset(def.preset);
+        },
+
+        // ------------------------------------------------------------------
+        // Phase 4: Tournament map selection
+        // ------------------------------------------------------------------
+        async loadMapOptions() {
+            // Reuse the existing eel.get_match_options() which returns
+            // { map_types: [...], game_modes: [...], match_behaviours: [...], mutators: {...} }.
+            if (!eel.get_match_options) return;
+            try {
+                const options = await eel.get_match_options()();
+                if (options && Array.isArray(options.map_types)) {
+                    this.mapOptions = options.map_types;
+                }
+                if (options && Array.isArray(options.game_modes) && options.game_modes.length > 0) {
+                    this.gameModeOptions = options.game_modes;
+                }
+            } catch (e) {
+                console.error('Error loading map options:', e);
+                this.mapOptions = [];
+            }
+        },
+
+        // Convert a map ID (e.g. 'DFHStadium_Stormy') to a friendly name
+        // (e.g. 'DFH Stadium Stormy').
+        formatMapName(mapId) {
+            if (!mapId) return '';
+            return mapId
+                .replace(/_/g, ' ')
+                .replace(/([a-z])([A-Z])/g, '$1 $2');
+        },
+
+        // ------------------------------------------------------------------
+        // Phase 4: Mutator presets
+        // ------------------------------------------------------------------
+        applyPreset(presetKey) {
+            this.selectedPreset = presetKey;
+            if (presetKey === 'custom' || !MUTATOR_PRESETS[presetKey]) {
+                // No preset — keep current values (or reset to defaults)
+                return;
+            }
+            const preset = MUTATOR_PRESETS[presetKey];
+            this.newTournament.mutators = { ...DEFAULT_MUTATORS, ...preset.mutators };
+            // NOTE: do NOT set game_mode here. The game mode is the source of truth
+            // for the map/preset sync; setting it here would re-trigger the
+            // game_mode watcher and clobber the map the user just selected.
+        },
+
+        // ------------------------------------------------------------------
+        // Phase 4: Match history view
+        // ------------------------------------------------------------------
+        async refreshMatchHistory() {
+            if (!this.tournamentState) {
+                this.matchHistory = null;
+                return;
+            }
+            if (!eel.tournament_get_match_history) {
+                this.matchHistory = null;
+                return;
+            }
+            try {
+                const result = await eel.tournament_get_match_history()();
+                const data = JSON.parse(result);
+                if (data.error) {
+                    this.matchHistory = null;
+                    return;
+                }
+                // Filter out bye matches (auto-completed, never actually played)
+                if (data && Array.isArray(data.rounds)) {
+                    data.rounds = data.rounds
+                        .map(round => ({
+                            ...round,
+                            matches: (round.matches || []).filter(m => !m.is_bye)
+                        }))
+                        .filter(round => round.matches.length > 0);
+                    // Expand all rounds by default (composite key so WB and LB
+                    // rounds with the same round_num don't collide)
+                    for (const round of data.rounds) {
+                        this.$set(this.expandedHistoryRounds, this.historyRoundKey(round), true);
+                    }
+                }
+                this.matchHistory = data;
+            } catch (e) {
+                console.error('Error fetching match history:', e);
+                this.matchHistory = null;
+            }
+        },
+
+        switchHistoryTab(tab) {
+            this.activeHistoryTab = tab;
+            if (tab === 'history' && this.tournamentState) {
+                this.refreshMatchHistory();
+            }
+        },
+
+        // Composite key for expandedHistoryRounds so WB and LB rounds with the
+        // same round_num don't collide in double elimination.
+        historyRoundKey(round) {
+            return `${round.bracket || 'main'}-${round.round_num}`;
+        },
+
+        toggleHistoryRound(round) {
+            const key = this.historyRoundKey(round);
+            this.$set(this.expandedHistoryRounds, key, !this.expandedHistoryRounds[key]);
+        },
+
+        toggleHistoryMatch(matchId) {
+            if (this.expandedHistoryMatches[matchId]) {
+                this.$delete(this.expandedHistoryMatches, matchId);
+            } else {
+                this.$set(this.expandedHistoryMatches, matchId, true);
+            }
+        },
+
+        // Build a CSV string from the match history data.
+        buildHistoryCSV() {
+            if (!this.matchHistory || !Array.isArray(this.matchHistory.rounds)) return '';
+            const headers = [
+                'Round', 'Match ID', 'Team 1', 'Team 2',
+                'Score 1', 'Score 2', 'Winner', 'Completed'
+            ];
+            const rows = [headers.join(',')];
+            const esc = (v) => {
+                const s = (v === null || v === undefined) ? '' : String(v);
+                if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+                    return '"' + s.replace(/"/g, '""') + '"';
+                }
+                return s;
+            };
+            for (const round of this.matchHistory.rounds) {
+                for (const m of round.matches) {
+                    const row = [
+                        round.round_num,
+                        m.match_id,
+                        m.team1_name || m.participant1_name || '',
+                        m.team2_name || m.participant2_name || '',
+                        m.score ? m.score[0] : '',
+                        m.score ? m.score[1] : '',
+                        m.winner_name || '',
+                        m.completed ? 'Yes' : 'No'
+                    ];
+                    rows.push(row.map(esc).join(','));
+                }
+            }
+            return rows.join('\n');
+        },
+
+        async exportHistoryCSV() {
+            if (!this.matchHistory) {
+                alert('No match history to export.');
+                return;
+            }
+            const csv = this.buildHistoryCSV();
+            const defaultName = `${(this.tournamentState.name || 'tournament').replace(/[^a-z0-9]/gi, '_')}_match_history.csv`;
+            try {
+                const result = await eel.tournament_save_file_dialog(csv, defaultName)();
+                const resultData = JSON.parse(result);
+                if (resultData.cancelled) return;
+                if (resultData.error) {
+                    alert('Error saving CSV: ' + resultData.error);
+                    return;
+                }
+                alert('Match history exported to: ' + resultData.path);
+            } catch (error) {
+                console.error('Error exporting CSV:', error);
+                alert('Error exporting CSV: ' + error);
+            }
+        },
+
+        async exportHistoryJSON() {
+            if (!this.matchHistory) {
+                alert('No match history to export.');
+                return;
+            }
+            const jsonStr = JSON.stringify(this.matchHistory, null, 2);
+            const defaultName = `${(this.tournamentState.name || 'tournament').replace(/[^a-z0-9]/gi, '_')}_match_history.json`;
+            try {
+                const result = await eel.tournament_save_file_dialog(jsonStr, defaultName)();
+                const resultData = JSON.parse(result);
+                if (resultData.cancelled) return;
+                if (resultData.error) {
+                    alert('Error saving JSON: ' + resultData.error);
+                    return;
+                }
+                alert('Match history exported to: ' + resultData.path);
+            } catch (error) {
+                console.error('Error exporting JSON:', error);
+                alert('Error exporting JSON: ' + error);
+            }
         },
         
         async exportTournament() {
@@ -2022,6 +2423,8 @@ export default {
                         this.refreshTeamBalance();
                         this.refreshStats();
                         this.refreshSwissStandings();
+                        // Phase 4: Refresh match history so new results appear immediately
+                        this.refreshMatchHistory();
                         // Phase 4: Auto-start next match if enabled
                         this.onMatchComplete();
                     }
@@ -2120,6 +2523,8 @@ export default {
                 team_size: this.tournamentState.team_size,
                 allow_duplicates: !!this.tournamentState.allow_duplicates,
                 mutators: this.tournamentState.match_settings || {},
+                map: this.tournamentState.map || '',
+                game_mode: this.tournamentState.game_mode || 'Soccer',
                 human_count: 0,
                 human_names: []
             };
@@ -2145,6 +2550,8 @@ export default {
             this.newTournament.team_size = cfg.team_size || 1;
             this.newTournament.allow_duplicates = !!cfg.allow_duplicates;
             this.newTournament.mutators = { ...DEFAULT_MUTATORS, ...(cfg.mutators || {}) };
+            this.newTournament.map = cfg.map || '';
+            this.newTournament.game_mode = cfg.game_mode || 'Soccer';
             this.newTournament.human_count = cfg.human_count || 0;
             this.newTournament.human_names = cfg.human_names || [];
             this.newTournament.name = '';
@@ -2411,6 +2818,9 @@ export default {
         // Phase 4: Add keyboard event listener for Enter key shortcut
         this._keyPressHandler = (event) => this.handleKeyPress(event);
         window.addEventListener('keydown', this._keyPressHandler);
+
+        // Phase 4: Load available maps for the map selector
+        this.loadMapOptions();
     },
     beforeDestroy() {
         if (this._bracketResizeHandler) {
@@ -2445,6 +2855,12 @@ export default {
                 const names = this.newTournament.human_names || [];
                 while (names.length < c) names.push('');
                 this.newTournament.human_names = names.slice(0, c);
+            }
+        },
+        // Phase 4: changing the game mode also updates the map + preset
+        'newTournament.game_mode': {
+            handler(newMode) {
+                this.onGameModeChange(newMode);
             }
         }
     },

@@ -2004,3 +2004,241 @@
     display: flex;
     gap: 5px;
 }
+
+/* ============================================================
+   Phase 4: Match History panel + tab bar styles
+   ============================================================ */
+
+.history-tab-bar {
+    display: flex;
+    gap: 8px;
+    padding: 10px 20px;
+    background: rgba(0, 0, 0, 0.2);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.history-tab-bar .btn {
+    border-radius: 20px;
+    font-size: 0.85rem;
+    padding: 6px 16px;
+    transition: all 0.2s ease;
+}
+
+.history-tab-bar .btn.active-tab {
+    background: rgba(0, 217, 255, 0.3);
+    border-color: #00d9ff;
+    color: #fff;
+}
+
+/* Match History panel */
+.match-history-panel {
+    flex: 1;
+    min-width: 0;
+    padding: 20px;
+    max-height: calc(100vh - 220px);
+    overflow-y: auto;
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 10px;
+    margin: 10px 0;
+}
+
+.match-history-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.match-history-header h5 {
+    margin: 0;
+    color: #fff;
+}
+
+.match-history-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.match-history-rounds {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.match-history-round {
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.match-history-round-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 15px;
+    background: rgba(0, 217, 255, 0.1);
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.2s ease;
+}
+
+.match-history-round-header:hover {
+    background: rgba(0, 217, 255, 0.2);
+}
+
+.match-history-round-header h6 {
+    margin: 0;
+    color: #fff;
+    font-size: 0.95rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Winners/losers bracket badges in match history */
+.history-bracket-badge {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    line-height: 1.4;
+}
+
+.history-bracket-wb {
+    background: rgba(0, 123, 255, 0.25);
+    color: #6db3ff;
+    border: 1px solid rgba(0, 123, 255, 0.5);
+}
+
+.history-bracket-lb {
+    background: rgba(255, 152, 0, 0.2);
+    color: #ffb74d;
+    border: 1px solid rgba(255, 152, 0, 0.5);
+}
+
+.match-history-round-matches {
+    padding: 10px 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.match-history-entry {
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.match-history-score-line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.match-team-name {
+    color: #ddd;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.match-score {
+    background: rgba(0, 0, 0, 0.3);
+    padding: 2px 12px;
+    border-radius: 12px;
+    color: #fff;
+    font-weight: bold;
+    font-size: 0.9rem;
+    min-width: 80px;
+    text-align: center;
+}
+
+.match-history-meta {
+    display: flex;
+    gap: 10px;
+    font-size: 0.8rem;
+}
+
+.match-winner-badge {
+    color: #ffc107;
+}
+
+.match-pending-badge {
+    color: #888;
+    font-style: italic;
+}
+
+.match-history-details {
+    padding-top: 6px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Per-player stats table in match history: fixed layout with generous
+   column padding so each number clearly aligns with its header */
+.player-stats-table-wrapper {
+    overflow-x: auto;
+}
+
+.player-stats-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    table-layout: fixed;
+}
+
+.player-stats-table th,
+.player-stats-table td {
+    padding: 4px 14px;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.player-stats-table th:first-child,
+.player-stats-table td:first-child {
+    text-align: left;
+    width: 22%;
+}
+
+.player-stats-table thead th {
+    color: #aaa;
+    font-weight: 600;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+    padding-bottom: 6px;
+}
+
+.player-stats-table tbody tr + tr td {
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.match-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 6px;
+    font-size: 0.8rem;
+    color: #aaa;
+}
+
+.detail-item {
+    padding: 4px 8px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+}
+
+.match-history-entry .btn-link {
+    align-self: flex-end;
+    font-size: 0.8rem;
+    color: #00d9ff;
+    padding: 0;
+}
+
+.match-history-entry .btn-link:hover {
+    color: #fff;
+}

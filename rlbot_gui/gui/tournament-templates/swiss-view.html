@@ -1,5 +1,5 @@
-<!-- Swiss View (inlined into the main tournament component scope; carries v-else) -->
-<div class="swiss-view swiss-view-scrollable" v-else>
+<!-- Swiss View (inlined into the main tournament component scope; carries v-else-if) -->
+<div class="swiss-view swiss-view-scrollable" v-else-if="activeHistoryTab === 'bracket' && tournamentState.format === 'swiss'">
     <div class="swiss-header">
         <h4>Swiss Format</h4>
         <span class="swiss-round-info" v-if="tournamentState.swiss_rounds > 0">

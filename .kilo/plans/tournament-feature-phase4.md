@@ -3,7 +3,7 @@
 ## Overview
 This plan outlines Phase 4 features for the RLBotGUI tournament system, building upon the completed Phase 3 features. Phase 4 introduces new tournament formats, enhanced UX, and improved tournament management capabilities.
 
-## Critical Bug Fix: Human Participant Validation
+## Critical Bug Fix: Human Participant Validation ✅ FIXED
 
 **Issue**: When adding humans to a tournament, they are not being counted toward the participant total, allowing users to create tournaments with odd participant counts that cannot form full teams. Additionally, humans are not being assigned to any teams during team formation. Human players also cannot enter their usernames.
 
@@ -52,7 +52,7 @@ This plan outlines Phase 4 features for the RLBotGUI tournament system, building
 | Phase 1 | ✅ Complete | 1v1 single elimination, import/export, basic bracket |
 | Phase 2 | ✅ Complete | Team sizes 2v2-5v5, double elimination, round robin, multi-human |
 | Phase 3 | ✅ Complete | LAN workflow, templates, statistics, bracket visualization, team balance |
-| Phase 4 | 🟢 In Progress | Swiss format ✅, auto-start ✅, team names ✅, manual pairing ✅, seeding editor ✅, match history |
+| Phase 4 | ✅ Complete | Swiss format ✅, auto-start ✅, team names ✅, manual pairing ✅, seeding editor ✅, match history ✅, mutator presets ✅, map selection ✅ |
 
 ---
 
@@ -269,7 +269,7 @@ NOUNS = ['Eagles', 'Bots', 'Ravens', 'Wolves', 'Tigers', 'Dragons', 'Knights', '
 
 ---
 
-### 6. Tournament Mutator Presets
+### 6. Tournament Mutator Presets ✅ IMPLEMENTED
 
 **Description**: Quick-select preset mutator configurations for common game modes (Standard, Rumble, Hoops, etc.).
 
@@ -288,31 +288,18 @@ NOUNS = ['Eagles', 'Bots', 'Ravens', 'Wolves', 'Tigers', 'Dragons', 'Knights', '
 - Selecting preset populates mutator dropdowns with preset values
 - User can modify any field after preset selection
 
-**Files to Modify**:
-- `rlbot_gui/gui/js/tournament-vue.js` - Add preset dropdown and value population logic
-- `rlbot_gui/gui/tournament-templates/` - Add preset definitions (JSON or JS constants)
+**Files Modified**:
+- `rlbot_gui/gui/js/tournament-vue.js` - Added `MUTATOR_PRESETS` constant, `selectedPreset` state, and `applyPreset()` value population logic ✅
+- `rlbot_gui/gui/tournament-templates/modals.html` - Added preset dropdown + full mutator field set + game mode selector ✅
 
-**Preset Definitions** (example):
-```javascript
-const MUTATOR_PRESETS = {
-  'standard': {
-    game_mode: 'Soccer',
-    boost_amount: 'Default',
-    ball_speed: 'Default',
-    // ... all standard settings
-  },
-  'rumble': {
-    game_mode: 'Rumble',
-    boost_amount: 'Default',
-    // ... rumble-specific settings
-  },
-  // ... more presets
-};
-```
+**Implementation Notes**:
+- Game mode is the source of truth for the map/preset sync: changing game mode auto-selects the canonical map (e.g. Hoops → Dunk House) and preset; `applyPreset()` no longer writes back `game_mode` to avoid clobbering the map via the watcher
+- All 15 mutator fields plus game mode selector wired into the create modal, matching main GUI `get_match_options()`
+- Match behavior is owned by main GUI settings, not tournament state
 
 ---
 
-### 7. Match History View
+### 7. Match History View ✅ IMPLEMENTED
 
 **Description**: Dedicated view showing all completed matches with scores, stats, and export capability.
 
@@ -333,10 +320,26 @@ const MUTATOR_PRESETS = {
   - Duration timestamp
 - Export buttons: "Export CSV", "Export JSON"
 
-**Files to Modify**:
-- `rlbot_gui/tournament/tournament_runner.py` - Add `get_match_history()` with stats
-- `rlbot_gui/gui/js/tournament-vue.js` - Add match history view component
-- `rlbot_gui/gui/tournament-templates/active.html` - Add Match History tab markup
+**Files Modified**:
+- `rlbot_gui/tournament/tournament_runner.py` - Added `tournament_get_match_history()` Eel function; DE rounds grouped by `match_id` prefix (W* → winners, L* → losers, including Grand Final) ✅
+- `rlbot_gui/tournament/tournament_state.py` - Added `player_stats` field to `Match` ✅
+- `rlbot_gui/match_runner/match_runner.py` - `start_match_helper()` returns per-player stats (goals, own_goals, assists, saves, shots, demolitions) from the final packet ✅
+- `rlbot_gui/gui/js/tournament-vue.js` - Added `refreshMatchHistory()`, tab switcher, CSV/JSON export, composite `{bracket}-{round_num}` expand keys ✅
+- `rlbot_gui/gui/tournament-templates/active.html` - Added Match History tab, per-player stats table, Winners/Losers bracket badges ✅
+- `rlbot_gui/gui/css/tournament.css` - History panel, stats table, and bracket badge styles ✅
+
+**Implementation Notes**:
+- Bye matches (only one side ever populated) are flagged `is_bye` by the backend and filtered out client-side
+- Round titles use the consolidated `getRoundName(roundNum, bracket)`; DE history rounds show a blue "Winners Bracket" or orange "Losers Bracket" badge
+
+---
+
+### 10. Tournament Map Selection ✅ IMPLEMENTED
+
+- `map` field on `TournamentState`, selected via dropdown in the create modal ("Default (Random)" = null)
+- Applied to every tournament match in `launch_tournament_match()` (falls back to `DFHStadium` when unset)
+- Displayed in the Human Match Info modal; preserved through export/import
+- Game mode changes auto-sync the canonical map (e.g. Hoops → `Hoops_DunkHouse`, Dropshot → `DropShot_Core707`, Gridiron → `ChampionsField_NFL`)
 
 ---
 
@@ -455,31 +458,32 @@ const MUTATOR_PRESETS = {
 - [x] Enter key shortcut
 - [x] Only one match selectable
 
-### Random Team Names ✅
-- [x] 100+ unique combinations
-- [x] Re-randomize all teams
-- [x] Re-randomize individual team
-- [x] Custom name override
-- [x] Uniqueness enforcement
-
-### Manual Team Pairing
+### Manual Team Pairing ✅
 - [x] Pair two participants
 - [x] Move participant from one pair to another
 - [x] Team capacity warning
 - [x] Auto-form remaining teams
 
-### Mutator Presets
-- [ ] All preset types load correctly
-- [ ] Values populate mutator dropdowns
-- [ ] User can modify preset values
-- [ ] Preset selection during creation only
+### Mutator Presets ✅
+- [x] All preset types load correctly
+- [x] Values populate mutator dropdowns
+- [x] User can modify preset values
+- [x] Preset selection during creation only
 
-### Match History
-- [ ] Round grouping
-- [ ] Expandable stats
-- [ ] CSV export format
-- [ ] JSON export format
-- [ ] Auto-refresh on match completion
+### Match History ✅
+- [x] Round grouping
+- [x] Expandable stats
+- [x] CSV export format
+- [x] JSON export format
+- [x] Auto-refresh on match completion
+- [x] Bye matches filtered out
+- [x] Winners/Losers bracket labels in history (double elimination)
+
+### Map Selection ✅
+- [x] Map dropdown in create modal (optional, defaults to random)
+- [x] Map applied to all tournament matches
+- [x] Map displayed in Human Match Info modal
+- [x] Map preserved through export/import
 
 ---
 

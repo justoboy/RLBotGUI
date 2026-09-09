@@ -109,11 +109,61 @@
             </div>
         </b-form-group>
 
+        <!-- Phase 4: Map Selection -->
+        <b-form-group label="Map (Optional)" label-for="tournament-map">
+            <b-form-select
+                id="tournament-map"
+                v-model="newTournament.map"
+            >
+                <b-form-select-option :value="''">Default (DFH Stadium)</b-form-select-option>
+                <b-form-select-option
+                    v-for="mapId in mapOptions"
+                    :key="mapId"
+                    :value="mapId"
+                >
+                    {{ formatMapName(mapId) }}
+                </b-form-select-option>
+            </b-form-select>
+            <small class="text-muted">
+                Select a map for all tournament matches. If not selected, RLBot will use DFH Stadium.
+            </small>
+        </b-form-group>
+
+        <!-- Phase 4: Game Mode (match behavior is configured in the main GUI) -->
+        <div class="mutator-grid">
+            <mutator-field
+                label="Game Mode"
+                :options="gameModeOptions"
+                v-model="newTournament.game_mode"
+            />
+        </div>
+
         <!-- Mutator Settings -->
         <div class="mutator-settings-section">
             <h5>Match Settings (Optional)</h5>
             <p class="text-muted small">Customize match settings. Leave as default for standard matches.</p>
-            
+
+            <!-- Phase 4: Mutator Presets -->
+            <b-form-group label="Preset" label-for="mutator-preset" class="mb-3">
+                <b-form-select
+                    id="mutator-preset"
+                    v-model="selectedPreset"
+                    @change="applyPreset"
+                >
+                    <b-form-select-option value="custom">Custom</b-form-select-option>
+                    <b-form-select-option
+                        v-for="(preset, key) in MUTATOR_PRESETS"
+                        :key="key"
+                        :value="key"
+                    >
+                        {{ preset.label }}
+                    </b-form-select-option>
+                </b-form-select>
+                <small class="text-muted">
+                    Quick-select a preset to populate the settings below. You can adjust any field afterwards.
+                </small>
+            </b-form-group>
+
             <div class="mutator-grid">
                 <mutator-field
                     label="Match Length"
@@ -146,6 +196,11 @@
                     v-model="newTournament.mutators.boost_amount"
                 />
                 <mutator-field
+                    label="Boost Strength"
+                    :options="MUTATOR_OPTIONS.boost_strength"
+                    v-model="newTournament.mutators.boost_strength"
+                />
+                <mutator-field
                     label="Rumble"
                     :options="MUTATOR_OPTIONS.rumble"
                     v-model="newTournament.mutators.rumble"
@@ -154,6 +209,41 @@
                     label="Demolish"
                     :options="MUTATOR_OPTIONS.demolish"
                     v-model="newTournament.mutators.demolish"
+                />
+                <mutator-field
+                    label="Gravity"
+                    :options="MUTATOR_OPTIONS.gravity"
+                    v-model="newTournament.mutators.gravity"
+                />
+                <mutator-field
+                    label="Respawn Time"
+                    :options="MUTATOR_OPTIONS.respawn_time"
+                    v-model="newTournament.mutators.respawn_time"
+                />
+                <mutator-field
+                    label="Ball Type"
+                    :options="MUTATOR_OPTIONS.ball_type"
+                    v-model="newTournament.mutators.ball_type"
+                />
+                <mutator-field
+                    label="Ball Max Speed"
+                    :options="MUTATOR_OPTIONS.ball_max_speed"
+                    v-model="newTournament.mutators.ball_max_speed"
+                />
+                <mutator-field
+                    label="Ball Weight"
+                    :options="MUTATOR_OPTIONS.ball_weight"
+                    v-model="newTournament.mutators.ball_weight"
+                />
+                <mutator-field
+                    label="Ball Size"
+                    :options="MUTATOR_OPTIONS.ball_size"
+                    v-model="newTournament.mutators.ball_size"
+                />
+                <mutator-field
+                    label="Ball Bounciness"
+                    :options="MUTATOR_OPTIONS.ball_bounciness"
+                    v-model="newTournament.mutators.ball_bounciness"
                 />
             </div>
             
@@ -451,13 +541,24 @@
             
             <h6>Current Tournament Settings:</h6>
             <ul v-if="currentMatchSettings && Object.keys(currentMatchSettings).length > 0">
+                <li><b>Game Mode:</b> {{ currentMatchSettings.game_mode || 'Soccer' }}</li>
                 <li><b>Map:</b> {{ currentMatchSettings.map || 'Default' }}</li>
                 <li><b>Match Length:</b> {{ currentMatchSettings.mutators?.match_length || '5 Minutes' }}</li>
                 <li><b>Max Score:</b> {{ currentMatchSettings.mutators?.max_score || '5 Goals' }}</li>
+                <li><b>Overtime:</b> {{ currentMatchSettings.mutators?.overtime || 'Unlimited' }}</li>
+                <li><b>Series Length:</b> {{ currentMatchSettings.mutators?.series_length || 'Unlimited' }}</li>
                 <li><b>Game Speed:</b> {{ currentMatchSettings.mutators?.game_speed || 'Default' }}</li>
+                <li><b>Ball Max Speed:</b> {{ currentMatchSettings.mutators?.ball_max_speed || 'Default' }}</li>
+                <li><b>Ball Type:</b> {{ currentMatchSettings.mutators?.ball_type || 'Default' }}</li>
+                <li><b>Ball Weight:</b> {{ currentMatchSettings.mutators?.ball_weight || 'Default' }}</li>
+                <li><b>Ball Size:</b> {{ currentMatchSettings.mutators?.ball_size || 'Default' }}</li>
+                <li><b>Ball Bounciness:</b> {{ currentMatchSettings.mutators?.ball_bounciness || 'Default' }}</li>
                 <li><b>Boost Amount:</b> {{ currentMatchSettings.mutators?.boost_amount || 'Default' }}</li>
+                <li><b>Boost Strength:</b> {{ currentMatchSettings.mutators?.boost_strength || '1x' }}</li>
                 <li><b>Rumble:</b> {{ currentMatchSettings.mutators?.rumble || 'None' }}</li>
+                <li><b>Gravity:</b> {{ currentMatchSettings.mutators?.gravity || 'Default' }}</li>
                 <li><b>Demolish:</b> {{ currentMatchSettings.mutators?.demolish || 'Default' }}</li>
+                <li><b>Respawn Time:</b> {{ currentMatchSettings.mutators?.respawn_time || '3 Seconds' }}</li>
             </ul>
             <p v-else class="text-muted">No tournament settings available.</p>
             

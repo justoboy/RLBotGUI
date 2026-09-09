@@ -66,7 +66,7 @@ def count_humans_in_match(match: Match) -> int:
 
 
 @eel.expose
-def tournament_new(name: str, tournament_format: str, participants_json: str, match_settings_json: str = '{}', team_size: int = 1, allow_duplicates: bool = False, swiss_tiebreakers_json: str = '[]', swiss_rounds: int = 0) -> str:
+def tournament_new(name: str, tournament_format: str, participants_json: str, match_settings_json: str = '{}', team_size: int = 1, allow_duplicates: bool = False, swiss_tiebreakers_json: str = '[]', swiss_rounds: int = 0, map: str = '', game_mode: str = 'Soccer') -> str:
     """
     Create a new tournament.
     
@@ -82,6 +82,10 @@ def tournament_new(name: str, tournament_format: str, participants_json: str, ma
             Swiss format only.
         swiss_rounds: Optional override for the number of Swiss rounds.
             0 (default) = auto-calculate as ceil(log2(participants)).
+        map: Optional map ID (e.g., 'DFHStadium', 'BeckwithPark'). Stored with tournament state
+            and displayed in the Human Match Info modal.
+        game_mode: Game mode for all matches (e.g. 'Soccer', 'Hoops', 'Dropshot',
+            'Hockey', 'Rumble', 'Heatseeker', 'Gridiron').
     
     Returns:
         JSON string of tournament state
@@ -124,6 +128,9 @@ def tournament_new(name: str, tournament_format: str, participants_json: str, ma
     
     tournament_id = str(uuid.uuid4())[:8]
     
+    # Determine selected map (empty string → None)
+    selected_map = map if map and map.strip() else None
+
     # Calculate Swiss rounds
     if tournament_format == 'swiss':
         num_entities = len(participants) // team_size if team_size > 1 else len(participants)
@@ -134,6 +141,11 @@ def tournament_new(name: str, tournament_format: str, participants_json: str, ma
     else:
         calculated_rounds = 0
     
+    # Validate game mode
+    valid_game_modes = ('Soccer', 'Hoops', 'Dropshot', 'Hockey', 'Rumble', 'Heatseeker', 'Gridiron')
+    if game_mode not in valid_game_modes:
+        game_mode = 'Soccer'
+
     CURRENT_TOURNAMENT = TournamentState(
         name=name,
         tournament_id=tournament_id,
@@ -143,7 +155,9 @@ def tournament_new(name: str, tournament_format: str, participants_json: str, ma
         team_size=team_size,
         allow_duplicates=allow_duplicates,
         swiss_rounds=calculated_rounds,
-        swiss_tiebreakers=swiss_tiebreakers if tournament_format == 'swiss' else []
+        swiss_tiebreakers=swiss_tiebreakers if tournament_format == 'swiss' else [],
+        map=selected_map,
+        game_mode=game_mode
     )
     
     if team_size > 1:
@@ -609,16 +623,23 @@ def tournament_start_match(match_id: str, use_staging: bool = False) -> str:
         if key in default_mutators and value:
             mutators[key] = value
 
+    # Match behavior is owned by the main GUI settings (not the tournament), so
+    # read the operator's saved 'Existing Match Behaviour' choice here.
+    saved_match_settings = load_settings().value(MATCH_SETTINGS_KEY, type=dict) or {}
+    saved_behavior = saved_match_settings.get('match_behavior')
+    if saved_behavior not in ('Restart If Different', 'Restart', 'Continue And Spawn'):
+        saved_behavior = 'Restart If Different'
+
     match_settings = {
-        'game_mode': 'Soccer',
-        'map': 'DFHStadium',
+        'game_mode': CURRENT_TOURNAMENT.game_mode or 'Soccer',
+        'map': CURRENT_TOURNAMENT.map if CURRENT_TOURNAMENT.map else 'DFHStadium',
         'skip_replays': True,
         'instant_start': False,
         'enable_lockstep': False,
         'enable_rendering': True,
         'enable_state_setting': False,
         'auto_save_replay': False,
-        'match_behavior': 'Restart',
+        'match_behavior': saved_behavior,
         'mutators': mutators,
         'scripts': []
     }
@@ -849,14 +870,17 @@ def launch_tournament_match(bot_list: list, match_settings: dict, match_id: str,
         launcher_preference_map = load_launcher_settings()
         launcher_prefs = launcher_preferences_from_map(launcher_preference_map)
         print(f"DEBUG: About to call start_match_helper")
-        team_scores = start_match_helper(bot_list, match_settings, launcher_prefs, wait_for_completion=wait_for_completion)
-        print(f"DEBUG: start_match_helper returned team_scores={team_scores}")
+        result_data = start_match_helper(bot_list, match_settings, launcher_prefs, wait_for_completion=wait_for_completion)
+        print(f"DEBUG: start_match_helper returned result_data={result_data}")
 
         # Staging match: no result to record, the real match is launched later
         # via tournament_confirm_players_ready().
         if not wait_for_completion:
             print(f"DEBUG: Staging match for {match_id} launched, not waiting for completion")
             return
+
+        team_scores = (result_data or {}).get('team_scores') or []
+        player_stats = (result_data or {}).get('players') or []
 
         # Automatically record the winner based on team scores
         if team_scores:
@@ -897,7 +921,8 @@ def launch_tournament_match(bot_list: list, match_settings: dict, match_id: str,
             if winner_name:
                 print(f"DEBUG: Auto-recording winner: {winner_name} with score {winning_score}")
                 # Call tournament_record_result to advance the tournament
-                result = tournament_record_result(match_id, winner_name, json.dumps(ordered_scores))
+                result = tournament_record_result(match_id, winner_name, json.dumps(ordered_scores),
+                                                 json.dumps(player_stats) if player_stats else '[]')
                 print(f"DEBUG: tournament_record_result returned: {result}")
             else:
                 print(f"DEBUG: Could not find winner for team {winning_team_index}")
@@ -922,7 +947,7 @@ def tournament_match_started(match_id: str) -> None:
 
 
 @eel.expose
-def tournament_record_result(match_id: str, winner_name: str, score_json: str) -> str:
+def tournament_record_result(match_id: str, winner_name: str, score_json: str, player_stats_json: str = '[]') -> str:
     """
     Record the result of a match and advance the winner.
     
@@ -930,6 +955,7 @@ def tournament_record_result(match_id: str, winner_name: str, score_json: str) -
         match_id: ID of the match
         winner_name: Name of the winning participant
         score_json: JSON string of score tuple
+        player_stats_json: JSON list of per-player stat dicts (optional)
     
     Returns:
         JSON string of updated tournament state
@@ -940,6 +966,13 @@ def tournament_record_result(match_id: str, winner_name: str, score_json: str) -
         return json.dumps({'error': 'No tournament loaded'})
     
     score = tuple(json.loads(score_json))
+
+    try:
+        player_stats = json.loads(player_stats_json) if player_stats_json else []
+    except (json.JSONDecodeError, TypeError):
+        player_stats = []
+    if not isinstance(player_stats, list):
+        player_stats = []
     
     # Find the match
     match = None
@@ -975,6 +1008,8 @@ def tournament_record_result(match_id: str, winner_name: str, score_json: str) -
     match.winner = winner
     match.score = score
     match.completed = True
+    if player_stats:
+        match.player_stats = player_stats
     
     # For double elimination, populate the Losers Bracket match with the loser
     if CURRENT_TOURNAMENT.format == 'double_elimination' and match.loser_next_match_id:
@@ -1981,6 +2016,131 @@ def tournament_get_statistics() -> str:
         'winner': CURRENT_TOURNAMENT.winner.name if CURRENT_TOURNAMENT.winner else None,
         'winner_team': CURRENT_TOURNAMENT.winner_team.name if CURRENT_TOURNAMENT.winner_team else None,
         'ranked': ranked
+    })
+
+
+def _match_entity_name(match: Match, side: int) -> Optional[str]:
+    """
+    Return the display name for one side of a match.
+
+    side=0 → team1/participant1, side=1 → team2/participant2.
+    Handles both team-based matches (team1/team2) and 1v1 matches
+    (participant1/participant2).
+    """
+    if side == 0:
+        if match.team1 is not None:
+            return match.team1.name or 'Team'
+        if match.participant1 is not None:
+            return match.participant1.name
+    else:
+        if match.team2 is not None:
+            return match.team2.name or 'Team'
+        if match.participant2 is not None:
+            return match.participant2.name
+    return None
+
+
+def _match_winner_name(match: Match) -> Optional[str]:
+    """Return the winner's display name for a completed match."""
+    if match.winner_team is not None:
+        return match.winner_team.name or 'Team'
+    if match.winner is not None:
+        return match.winner.name
+    return None
+
+
+@eel.expose
+def tournament_get_match_history() -> str:
+    """
+    Phase 4: Return the full match history grouped by round.
+
+    Each match entry includes:
+      - match_id, round_num, completed
+      - team1_name / team2_name (or participant1_name / participant2_name)
+      - score (list of two ints, or None)
+      - winner_name
+      - goals_for / goals_against per side (for expandable stats)
+
+    Returns:
+        JSON string with:
+          - tournament_name, format, team_size
+          - rounds: [{round_num, matches: [...]}] sorted by round_num
+          - total_matches, completed_matches
+    """
+    global CURRENT_TOURNAMENT
+
+    if CURRENT_TOURNAMENT is None:
+        return json.dumps({'error': 'No tournament loaded'})
+
+    all_matches = list(CURRENT_TOURNAMENT.matches) + list(CURRENT_TOURNAMENT.losers_bracket_matches)
+
+    # Group matches by bracket + round number. For double elimination, winners
+    # bracket and losers bracket rounds are listed separately so the history
+    # labels match the bracket view. The Grand Final is stored in the main
+    # matches array but is L-prefixed, so classify by match_id prefix.
+    groups: List[tuple] = []  # (bracket, round_num, matches)
+    if CURRENT_TOURNAMENT.format == 'double_elimination':
+        wb_map: Dict[int, list] = {}
+        lb_map: Dict[int, list] = {}
+        for match in list(CURRENT_TOURNAMENT.matches) + list(CURRENT_TOURNAMENT.losers_bracket_matches):
+            if match.match_id.startswith('L'):
+                lb_map.setdefault(match.round_num, []).append(match)
+            else:
+                wb_map.setdefault(match.round_num, []).append(match)
+        for round_num in sorted(wb_map.keys()):
+            groups.append(('winners', round_num, wb_map[round_num]))
+        for round_num in sorted(lb_map.keys()):
+            groups.append(('losers', round_num, lb_map[round_num]))
+    else:
+        rounds_map: Dict[int, list] = {}
+        for match in all_matches:
+            rounds_map.setdefault(match.round_num, []).append(match)
+        for round_num in sorted(rounds_map.keys()):
+            groups.append(('main', round_num, rounds_map[round_num]))
+
+    completed_matches = 0
+    rounds_out = []
+    for bracket, round_num, round_matches in groups:
+        matches_out = []
+        for match in round_matches:
+            # A bye is a match that was auto-completed without ever having
+            # both sides populated (never actually played). Works for both
+            # 1v1 (participant slots) and team mode (team slots).
+            side1_filled = match.team1 is not None or match.participant1 is not None
+            side2_filled = match.team2 is not None or match.participant2 is not None
+            is_bye = side1_filled != side2_filled
+            entry = {
+                'match_id': match.match_id,
+                'round_num': match.round_num,
+                'completed': match.completed,
+                'is_bye': is_bye,
+                'team1_name': _match_entity_name(match, 0),
+                'team2_name': _match_entity_name(match, 1),
+                'participant1_name': match.participant1.name if match.participant1 else None,
+                'participant2_name': match.participant2.name if match.participant2 else None,
+                'score': list(match.score) if match.score else None,
+                'winner_name': _match_winner_name(match) if match.completed else None,
+                'player_stats': match.player_stats or [],
+            }
+            if match.completed:
+                completed_matches += 1
+            matches_out.append(entry)
+        rounds_out.append({
+            'round_num': round_num,
+            'bracket': bracket,
+            'matches': matches_out
+        })
+
+    return json.dumps({
+        'tournament_name': CURRENT_TOURNAMENT.name,
+        'format': CURRENT_TOURNAMENT.format,
+        'team_size': CURRENT_TOURNAMENT.team_size,
+        'total_matches': len(all_matches),
+        'completed_matches': completed_matches,
+        'completed': CURRENT_TOURNAMENT.completed,
+        'winner': CURRENT_TOURNAMENT.winner.name if CURRENT_TOURNAMENT.winner else None,
+        'winner_team': CURRENT_TOURNAMENT.winner_team.name if CURRENT_TOURNAMENT.winner_team else None,
+        'rounds': rounds_out
     })
 
 

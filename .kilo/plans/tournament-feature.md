@@ -359,7 +359,7 @@ rlbot_gui/
      - ✅ **Shareable tournament files** — import/export already implemented in Phase 1 (`tournament_export_to_json` / `tournament_import_from_json` / `tournament_save_file_dialog`)
      - ✅ **Team balance indicators** — `tournament_team_balance()` now wired to a balance badge in the team panel (spread + balanced/unbalanced status)
 
-4. **Phase 4: New Features** — 🚧 IN PROGRESS
+4. **Phase 4: New Features** — ✅ COMPLETE
    - See [`tournament-feature-phase4.md`](.kilo/plans/tournament-feature-phase4.md) for detailed implementation plan
    - **Priority Order:**
      1. ✅ 🐛 **Bug Fix**: Human participant validation (counting, team assignment, usernames)
@@ -369,7 +369,7 @@ rlbot_gui/
       5. ✅ Swiss tournament format (log2 rounds, user-selectable tiebreakers, playoff for ties)
       6. ✅ Match history view (round-grouped, expandable stats, CSV/JSON export)
       7. ✅ Tournament mutator presets (Standard, Rumble, Hoops, etc.)
-      8. ⬜ Tournament map selection (select map during tournament creation, display in human match info modal)
+      8. ✅ Tournament map selection (select map during tournament creation, display in human match info modal)
 
 ## LAN Match Workflow (Multi-Human Tournaments)
 
@@ -442,15 +442,16 @@ When a match contains **one or more human participants**, do **not** launch the 
   4. ✅ Phase 2 double elimination + round robin — complete
   5. ✅ Phase 3 LAN match workflow: staging→real flow with "Players Ready?" gate for matches with humans
   6. ✅ Phase 3 polish: better bracket visualization, templates, statistics, shareable files, team balance indicator UI
-  7. ⬜ **Phase 4: New Features** — See [`tournament-feature-phase4.md`](.kilo/plans/tournament-feature-phase4.md) for detailed implementation plan
+  7. ✅ **Phase 4: New Features** — complete (see [`tournament-feature-phase4.md`](.kilo/plans/tournament-feature-phase4.md))
       - **Priority Order:**
         1. ✅ **Bug Fix**: Human participant validation (counting, team assignment, usernames) — Fixed: `v-model.number` on count input, `v-model` on name inputs, watcher to keep `human_names` in sync with `human_count`; bracket match cards cleaned up (duplicate participant name badges removed)
         2. ✅ Random team names (100+ combinations, editable, unique within tournament)
         3. ✅ Seeding editor + manual team pairing (click-to-pair, auto-form remaining)
       4. ✅ Start match button + auto-start matches (timer, skip humans option)
       5. ✅ Swiss tournament format (log2 rounds, user-selectable tiebreakers, playoff for ties)
-      6. Match history view (round-grouped, expandable stats, CSV/JSON export)
-        7. Tournament mutator presets (Standard, Rumble, Hoops, etc.)
+      6. ✅ Match history view (round-grouped, expandable stats, CSV/JSON export)
+        7. ✅ Tournament mutator presets (Standard, Rumble, Hoops, etc.)
+        8. ✅ Tournament map selection (select map during tournament creation, display in human match info modal)
 
 ## Tournament Mutator Values Reference
 
@@ -609,7 +610,7 @@ During implementation, the following deviations from the original plan were made
 
 ---
 
-## Tournament Map Selection (Phase 4 Future Enhancement)
+## Tournament Map Selection (Phase 4 — ✅ IMPLEMENTED)
 
 ### Overview
 Add the ability to select a map during tournament creation and display it in the Human Match Info modal. This addresses the current limitation where the Human Match Info modal shows "Default" for the map because tournaments don't currently store a specific map selection.

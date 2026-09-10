@@ -881,6 +881,8 @@ def launch_tournament_match(bot_list: list, match_settings: dict, match_id: str,
 
         team_scores = (result_data or {}).get('team_scores') or []
         player_stats = (result_data or {}).get('players') or []
+        duration_seconds = (result_data or {}).get('duration_seconds')
+        is_overtime = bool((result_data or {}).get('is_overtime', False))
 
         # Automatically record the winner based on team scores
         if team_scores:
@@ -922,7 +924,8 @@ def launch_tournament_match(bot_list: list, match_settings: dict, match_id: str,
                 print(f"DEBUG: Auto-recording winner: {winner_name} with score {winning_score}")
                 # Call tournament_record_result to advance the tournament
                 result = tournament_record_result(match_id, winner_name, json.dumps(ordered_scores),
-                                                 json.dumps(player_stats) if player_stats else '[]')
+                                                 json.dumps(player_stats) if player_stats else '[]',
+                                                 duration_seconds=duration_seconds, is_overtime=is_overtime)
                 print(f"DEBUG: tournament_record_result returned: {result}")
             else:
                 print(f"DEBUG: Could not find winner for team {winning_team_index}")
@@ -947,7 +950,8 @@ def tournament_match_started(match_id: str) -> None:
 
 
 @eel.expose
-def tournament_record_result(match_id: str, winner_name: str, score_json: str, player_stats_json: str = '[]') -> str:
+def tournament_record_result(match_id: str, winner_name: str, score_json: str, player_stats_json: str = '[]',
+                             duration_seconds: Optional[int] = None, is_overtime: bool = False) -> str:
     """
     Record the result of a match and advance the winner.
     
@@ -956,6 +960,8 @@ def tournament_record_result(match_id: str, winner_name: str, score_json: str, p
         winner_name: Name of the winning participant
         score_json: JSON string of score tuple
         player_stats_json: JSON list of per-player stat dicts (optional)
+        duration_seconds: Match duration in whole seconds (optional)
+        is_overtime: Whether the match went to overtime (optional)
     
     Returns:
         JSON string of updated tournament state
@@ -1010,6 +1016,9 @@ def tournament_record_result(match_id: str, winner_name: str, score_json: str, p
     match.completed = True
     if player_stats:
         match.player_stats = player_stats
+    if duration_seconds is not None:
+        match.duration_seconds = duration_seconds
+    match.is_overtime = is_overtime
     
     # For double elimination, populate the Losers Bracket match with the loser
     if CURRENT_TOURNAMENT.format == 'double_elimination' and match.loser_next_match_id:
@@ -2121,6 +2130,8 @@ def tournament_get_match_history() -> str:
                 'score': list(match.score) if match.score else None,
                 'winner_name': _match_winner_name(match) if match.completed else None,
                 'player_stats': match.player_stats or [],
+                'duration_seconds': match.duration_seconds,
+                'is_overtime': match.is_overtime,
             }
             if match.completed:
                 completed_matches += 1

@@ -145,22 +145,32 @@
 
             <!-- Phase 4: Mutator Presets -->
             <b-form-group label="Preset" label-for="mutator-preset" class="mb-3">
-                <b-form-select
-                    id="mutator-preset"
-                    v-model="selectedPreset"
-                    @change="applyPreset"
-                >
-                    <b-form-select-option value="custom">Custom</b-form-select-option>
-                    <b-form-select-option
-                        v-for="(preset, key) in MUTATOR_PRESETS"
-                        :key="key"
-                        :value="key"
+                <div class="d-flex align-items-center">
+                    <b-form-select
+                        id="mutator-preset"
+                        v-model="selectedPreset"
+                        @change="applyPreset"
+                        class="mr-2"
                     >
-                        {{ preset.label }}
-                    </b-form-select-option>
-                </b-form-select>
+                        <b-form-select-option value="custom">Custom</b-form-select-option>
+                        <b-form-select-option
+                            v-for="(preset, key) in allPresets"
+                            :key="key"
+                            :value="key"
+                        >
+                            {{ preset.label }}
+                        </b-form-select-option>
+                    </b-form-select>
+                    <b-button size="sm" variant="outline-primary" @click="saveAsCustomPreset" title="Save current settings as a named custom preset">
+                        <b-icon icon="bookmark"></b-icon> Save as Preset
+                    </b-button>
+                    <b-button v-if="selectedPreset.startsWith('custom_')" size="sm" variant="outline-danger" class="ml-2"
+                              @click="deleteCustomPreset(selectedPreset)" title="Delete this custom preset">
+                        <b-icon icon="trash"></b-icon>
+                    </b-button>
+                </div>
                 <small class="text-muted">
-                    Quick-select a preset to populate the settings below. You can adjust any field afterwards.
+                    Quick-select a preset to populate the settings below. You can adjust any field afterwards, then save it as a custom preset.
                 </small>
             </b-form-group>
 

@@ -326,6 +326,9 @@
                                     <b-icon icon="trophy-fill" variant="warning"></b-icon> {{ match.winner_name }} wins
                                 </span>
                                 <span v-else class="match-pending-badge">Pending</span>
+                                <span v-if="match.duration_seconds !== null && match.duration_seconds !== undefined" class="match-duration-badge">
+                                    <b-icon icon="clock"></b-icon> {{ formatDuration(match.duration_seconds) }}<template v-if="match.is_overtime"> <b-badge variant="danger" pill>OT</b-badge></template>
+                                </span>
                             </div>
                             <!-- Expandable detailed stats -->
                             <div class="match-history-details" v-show="expandedHistoryMatches[match.match_id]">
@@ -335,6 +338,7 @@
                                             <tr>
                                                 <th>Player</th>
                                                 <th>Team</th>
+                                                <th>Score</th>
                                                 <th>Goals</th>
                                                 <th>Assists</th>
                                                 <th>Saves</th>
@@ -350,6 +354,7 @@
                                                     <span v-if="!ps.is_bot" class="human-badge">HUMAN</span>
                                                 </td>
                                                 <td>{{ ps.team }}</td>
+                                                <td>{{ ps.score }}</td>
                                                 <td>{{ ps.goals }}</td>
                                                 <td>{{ ps.assists }}</td>
                                                 <td>{{ ps.saves }}</td>

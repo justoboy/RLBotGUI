@@ -2176,6 +2176,13 @@
     font-style: italic;
 }
 
+.match-duration-badge {
+    color: #6cb2eb;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
 .match-history-details {
     padding-top: 6px;
     border-top: 1px solid rgba(255, 255, 255, 0.1);

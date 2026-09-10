@@ -302,6 +302,7 @@ def start_match_helper(bot_list: List[dict], match_settings: dict, launcher_pref
                     'name': car.name,
                     'team': int(car.team),
                     'is_bot': bool(car.is_bot),
+                    'score': int(car.score_info.score),
                     'goals': int(car.score_info.goals),
                     'own_goals': int(car.score_info.own_goals),
                     'assists': int(car.score_info.assists),
@@ -309,7 +310,15 @@ def start_match_helper(bot_list: List[dict], match_settings: dict, launcher_pref
                     'shots': int(car.score_info.shots),
                     'demolitions': int(car.score_info.demolitions)
                 })
-            return {'team_scores': team_scores, 'players': players}
+            # Match-level info: duration (seconds) and overtime flag
+            duration_seconds = int(final_packet.game_info.seconds_elapsed)
+            is_overtime = bool(final_packet.game_info.is_overtime)
+            return {
+                'team_scores': team_scores,
+                'players': players,
+                'duration_seconds': duration_seconds,
+                'is_overtime': is_overtime
+            }
         return {'team_scores': [], 'players': []}
     except Exception as e:
         print(f"Error polling for match end: {e}")

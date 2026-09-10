@@ -47,11 +47,11 @@ This plan outlines Phase 4 features for the RLBotGUI tournament system, building
 
 ## Current Status Summary
 
-| Phase | Status | Key Features |
-|-------|--------|--------------|
-| Phase 1 | ✅ Complete | 1v1 single elimination, import/export, basic bracket |
-| Phase 2 | ✅ Complete | Team sizes 2v2-5v5, double elimination, round robin, multi-human |
-| Phase 3 | ✅ Complete | LAN workflow, templates, statistics, bracket visualization, team balance |
+| Phase   | Status     | Key Features                                                                                                                        |
+|---------|------------|-------------------------------------------------------------------------------------------------------------------------------------|
+| Phase 1 | ✅ Complete | 1v1 single elimination, import/export, basic bracket                                                                                |
+| Phase 2 | ✅ Complete | Team sizes 2v2-5v5, double elimination, round robin, multi-human                                                                    |
+| Phase 3 | ✅ Complete | LAN workflow, templates, statistics, bracket visualization, team balance                                                            |
 | Phase 4 | ✅ Complete | Swiss format ✅, auto-start ✅, team names ✅, manual pairing ✅, seeding editor ✅, match history ✅, mutator presets ✅, map selection ✅ |
 
 ---
@@ -293,7 +293,7 @@ NOUNS = ['Eagles', 'Bots', 'Ravens', 'Wolves', 'Tigers', 'Dragons', 'Knights', '
 - `rlbot_gui/gui/tournament-templates/modals.html` - Added preset dropdown + full mutator field set + game mode selector ✅
 
 **Implementation Notes**:
-- Game mode is the source of truth for the map/preset sync: changing game mode auto-selects the canonical map (e.g. Hoops → Dunk House) and preset; `applyPreset()` no longer writes back `game_mode` to avoid clobbering the map via the watcher
+- Two-way preset/mode sync: selecting a preset applies its `game_mode` and canonical map (e.g. Hoops → Dunk House, Snow Day → snowy DFH); manually changing game mode applies that mode's canonical preset. A `_applyingPreset` flag suppresses the game_mode watcher while a preset is being applied, so custom spin-offs (Boomer Ball, Pinball, etc.) are never clobbered by the mode's default preset.
 - All 15 mutator fields plus game mode selector wired into the create modal, matching main GUI `get_match_options()`
 - Match behavior is owned by main GUI settings, not tournament state
 
@@ -416,16 +416,16 @@ NOUNS = ['Eagles', 'Bots', 'Ravens', 'Wolves', 'Tigers', 'Dragons', 'Knights', '
 - None (all features extend existing files)
 
 ### Modified Files
-| File | Changes |
-|------|---------|
-| `rlbot_gui/tournament/bracket_generator.py` | Add `generate_swiss_bracket()`, verify bye placement |
-| `rlbot_gui/tournament/tournament_state.py` | Add Swiss data structures, tiebreaker settings |
-| `rlbot_gui/tournament/team_manager.py` | Add `generate_team_names()`, `pair_participants()`, `form_teams_with_pairs()` |
-| `rlbot_gui/tournament/tournament_runner.py` | Add Swiss scheduling, auto-start timer, match history |
-| `rlbot_gui/gui/js/tournament-vue.js` | Add Swiss UI, auto-start controls, start match button, team names, manual pairing, match history |
-| `rlbot_gui/gui/css/tournament.css` | Add selected match styling, Swiss-specific styles |
-| `rlbot_gui/gui/tournament-templates/active.html` | Add Match History tab, auto-start controls |
-| `rlbot_gui/gui/tournament-templates/modals.html` | Add Swiss settings, seeding editor, manual pairing UI |
+| File                                             | Changes                                                                                          |
+|--------------------------------------------------|--------------------------------------------------------------------------------------------------|
+| `rlbot_gui/tournament/bracket_generator.py`      | Add `generate_swiss_bracket()`, verify bye placement                                             |
+| `rlbot_gui/tournament/tournament_state.py`       | Add Swiss data structures, tiebreaker settings                                                   |
+| `rlbot_gui/tournament/team_manager.py`           | Add `generate_team_names()`, `pair_participants()`, `form_teams_with_pairs()`                    |
+| `rlbot_gui/tournament/tournament_runner.py`      | Add Swiss scheduling, auto-start timer, match history                                            |
+| `rlbot_gui/gui/js/tournament-vue.js`             | Add Swiss UI, auto-start controls, start match button, team names, manual pairing, match history |
+| `rlbot_gui/gui/css/tournament.css`               | Add selected match styling, Swiss-specific styles                                                |
+| `rlbot_gui/gui/tournament-templates/active.html` | Add Match History tab, auto-start controls                                                       |
+| `rlbot_gui/gui/tournament-templates/modals.html` | Add Swiss settings, seeding editor, manual pairing UI                                            |
 
 ---
 
@@ -487,13 +487,66 @@ NOUNS = ['Eagles', 'Bots', 'Ravens', 'Wolves', 'Tigers', 'Dragons', 'Knights', '
 
 ---
 
-## Open Questions
+## Open Questions — RESOLVED (investigated)
 
-1. **Swiss rematch avoidance**: Should the algorithm strictly avoid rematches, or allow rematches if no other options exist in late rounds?
-   - Recommendation: Strict avoidance preferred, but allow rematch if pool exhausted
+### 1. Swiss algorithm & rematch avoidance — VERIFIED CORRECT ✅
 
-2. **Match history detail level**: Which packet-derived stats are most valuable?
-   - Recommendation: Goals, saves, assists, demolitions, score contribution
+**How it works today** (verified in `bracket_generator.py`):
+- **Round count is FIXED, not endless**: `calculate_swiss_rounds()` = `ceil(log2(participants))` (2→1, 4→2, 8→3, 16→4). Each round halves the field's ambiguity, so log2 rounds is exactly enough to fully rank everyone. The tournament does NOT keep generating rounds until an absolute winner emerges — it runs the fixed number of rounds, then declares the most-wins participant the winner.
+- **Pairing**: `generate_swiss_next_round()` sorts all participants by wins (desc) then user tiebreakers, then greedily pairs the highest-ranked remaining participant with the highest-ranked opponent they haven't played yet — i.e. close records meet, exactly the "separate by skill" behavior intended.
+- **Rematch handling**: soft avoidance — a participant is never paired with a previous opponent unless every remaining candidate is a rematch (pool exhausted in late rounds), in which case the rematch is allowed. This matches the original recommendation and needs no change.
+- **Winner determination**: after the final round, `determine_swiss_winner()` compares top-2 win counts → user tiebreakers (score differential → goals scored → head-to-head) → if still tied, a head-to-head **playoff match** is scheduled (round `swiss_rounds + 1`).
 
-3. **Preset completeness**: Should all RL game modes be included, or just the most popular?
-   - Recommendation: Include all standard modes (Soccer, Rumble, Hoops, Spike Rush, Drop Shot, Snow Day, Hockey, Heatseeker)
+**Options if we want different behavior**:
+- *Option A (current, recommended)*: fixed `ceil(log2(N))` rounds + playoff on tie. Predictable schedule, no runaway tournaments.
+- *Option B*: "endless Swiss" — keep generating rounds until one participant is strictly ahead. Trivial to implement (just don't stop at `swiss_rounds` in `_handle_swiss_progression`), but a tournament could run indefinitely with repeated draws. Not recommended as default; could be an optional "sudden-death rounds" toggle later.
+
+**Difficulty**: No change needed — already correct. Option B would be ~1 hour if ever wanted.
+
+### 2. Match history detail level — FULL STAT INVENTORY
+
+Everything retrievable from the final `GameTickPacket` (`venv/.../game_data_struct.py`):
+
+**Per-player (`PlayerInfo.score_info` / `ScoreInfo`)** — ALL of these are available:
+- `score` (individual score points) ← **NOT yet captured**
+- `goals` ✅ captured
+- `own_goals` ✅ captured
+- `assists` ✅ captured
+- `saves` ✅ captured
+- `shots` ✅ captured (non-goal shots)
+- `demolitions` ✅ captured
+- Plus identity: `name`, `team`, `is_bot` ✅ captured
+
+**Match-level (`GameInfo`)** — currently NOT captured:
+- `seconds_elapsed` → **match duration** (the plan promised "Match duration" in the UI but it isn't stored yet)
+- `game_time_remaining`, `is_overtime`, `is_unlimited_time`
+- `is_round_active`, `is_kickoff_pause`, `is_match_ended`
+- `world_gravity_z`, `game_speed`, `frame_num`
+
+**Team-level (`TeamInfo`)**: `team_index`, `score` ✅ captured as `team_scores`.
+
+**Not useful / not per-player**: boost pad states, ball physics, latest touch, dropshot tile states — live telemetry, not match results.
+
+**✅ IMPLEMENTED**: `score` added to each player dict; `seconds_elapsed` (as `duration_seconds`) + `is_overtime` added to the result dict in `start_match_helper()`, persisted on `Match`, exposed via `tournament_get_match_history()`, and rendered in the expanded history panel (duration as mm:ss, red "OT" pill badge when overtime). CSV export includes Duration/Overtime/Player Stats columns.
+
+### 3. Mutator presets — available modes & custom spin-offs
+
+**Game modes supported by the parser** (`game_mode_types`): `Soccer`, `Hoops`, `Dropshot`, `Hockey`, `Rumble`, `Heatseeker`, `Gridiron`.
+
+**Correction — Snow Day IS Hockey**: "Snow Day" is Rocket League's in-game name for the Hockey game mode (puck on a snowy pitch). The old duplicate `snow_day` (as Soccer) and `hockey` presets have been merged into a single `snow_day` preset with `game_mode: 'Hockey'`. The sport preset is labeled "Standard (Soccar)" (soccer + cars) while the underlying parser key stays `Soccer`.
+
+**✅ IMPLEMENTED — spin-off presets built from existing mutator dropdown values** (no new mutator fields needed):
+
+| Preset               | Mutators                                                                                                     |
+|----------------------|--------------------------------------------------------------------------------------------------------------|
+| **Boomer Ball**      | `ball_max_speed: Super Fast`, `boost_amount: Unlimited`, `ball_bounciness: High`, `ball_weight: Super Light` |
+| **Moon Ball**        | `gravity: Low` (default ball)                                                                                |
+| **Beach Ball**       | `ball_size: Gigantic`, `ball_bounciness: Super High`, `ball_weight: Super Light`                             |
+| **Pinball**          | `ball_max_speed: Fast`, `ball_weight: Heavy`, `ball_bounciness: High`                                        |
+| **Demolition Derby** | `demolish: On Contact`, `respawn_time: 3 Seconds` (default), rumble off                                      |
+| **Heatseeker**       | `game_mode: Heatseeker`                                                                                      |
+| **Gridiron**         | `game_mode: Gridiron` + ChampionsField_NFL map                                                               |
+
+**✅ IMPLEMENTED — Save as Custom Preset**: A "Save as Preset" button in the create modal prompts for a name, then stores the current mutator config + game mode in `localStorage` under `rlbot_custom_presets`. Custom presets are merged into the preset dropdown via the `allPresets` computed property and can be deleted with a trash button. `applyPreset()` now reads from `allPresets` so custom presets apply identically to built-ins.
+
+**Final preset list**: Standard (Soccar), Rumble, Hoops, Spike Rush, Boomer (big ball), Drop Shot, Snow Day (Hockey), Heatseeker, Gridiron, Boomer Ball, Moon Ball, Beach Ball, Pinball, Demolition Derby — plus any user-saved custom presets.

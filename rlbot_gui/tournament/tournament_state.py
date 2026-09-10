@@ -93,8 +93,11 @@ class Match:
     team2: Optional[Team] = None
     winner_team: Optional[Team] = None
     # Phase 4: per-player stats captured from the final game tick packet
-    # Each entry: {name, team, is_bot, goals, own_goals, assists, saves, shots, demolitions}
+    # Each entry: {name, team, is_bot, score, goals, own_goals, assists, saves, shots, demolitions}
     player_stats: Optional[List[Dict[str, Any]]] = None
+    # Phase 4: match-level info captured from the final game tick packet
+    duration_seconds: Optional[int] = None  # Match duration in whole seconds
+    is_overtime: bool = False  # Whether the match went to overtime
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -110,7 +113,9 @@ class Match:
             'team1': self.team1.to_dict() if self.team1 else None,
             'team2': self.team2.to_dict() if self.team2 else None,
             'winner_team': self.winner_team.to_dict() if self.winner_team else None,
-            'player_stats': self.player_stats
+            'player_stats': self.player_stats,
+            'duration_seconds': self.duration_seconds,
+            'is_overtime': self.is_overtime
         }
     
     @staticmethod
@@ -138,6 +143,8 @@ class Match:
             match.winner_team = Team.from_dict(data['winner_team'])
         if data.get('player_stats'):
             match.player_stats = data['player_stats']
+        match.duration_seconds = data.get('duration_seconds')
+        match.is_overtime = data.get('is_overtime', False)
         return match
 
 

@@ -7,7 +7,7 @@ import { buildTournamentTemplate } from './tournament-templates/loader.js'
 // Default mutator settings
 const DEFAULT_MUTATORS = {
     match_length: '5 Minutes',
-    max_score: '5 Goals',
+    max_score: 'Unlimited',
     overtime: 'Unlimited',
     series_length: 'Unlimited',
     game_speed: 'Default',
@@ -50,11 +50,11 @@ const MUTATOR_OPTIONS = {
 // adjust individual settings. 'custom' means no preset is applied.
 const MUTATOR_PRESETS = {
     'standard': {
-        label: 'Standard (Soccer)',
+        label: 'Soccar',
         game_mode: 'Soccer',
         mutators: {
             match_length: '5 Minutes',
-            max_score: '5 Goals',
+            max_score: 'Unlimited',
             overtime: 'Unlimited',
             series_length: 'Unlimited',
             game_speed: 'Default',
@@ -76,7 +76,7 @@ const MUTATOR_PRESETS = {
         game_mode: 'Rumble',
         mutators: {
             match_length: '5 Minutes',
-            max_score: '5 Goals',
+            max_score: 'Unlimited',
             overtime: 'Unlimited',
             series_length: 'Unlimited',
             game_speed: 'Default',
@@ -98,7 +98,7 @@ const MUTATOR_PRESETS = {
         game_mode: 'Hoops',
         mutators: {
             match_length: '5 Minutes',
-            max_score: '5 Goals',
+            max_score: 'Unlimited',
             overtime: 'Unlimited',
             series_length: 'Unlimited',
             game_speed: 'Default',
@@ -106,8 +106,164 @@ const MUTATOR_PRESETS = {
             ball_type: 'Basketball',
             ball_weight: 'Default',
             ball_size: 'Default',
-            ball_bounciness: 'High',
+            ball_bounciness: 'Default',
             boost_amount: 'Default',
+            rumble: 'None',
+            boost_strength: '1x',
+            gravity: 'Default',
+            demolish: 'Default',
+            respawn_time: '3 Seconds'
+        }
+    },
+    'drop_shot': {
+        label: 'Drop Shot',
+        game_mode: 'Dropshot',
+        mutators: {
+            match_length: '5 Minutes',
+            max_score: 'Unlimited',
+            overtime: 'Unlimited',
+            series_length: 'Unlimited',
+            game_speed: 'Default',
+            ball_max_speed: 'Default',
+            ball_type: 'Default',
+            ball_weight: 'Default',
+            ball_size: 'Default',
+            ball_bounciness: 'Default',
+            boost_amount: 'Recharge (Fast)',
+            rumble: 'None',
+            boost_strength: '1x',
+            gravity: 'Default',
+            demolish: 'Default',
+            respawn_time: '3 Seconds'
+        }
+    },
+    // Snow Day IS the Hockey game mode (puck on a snowy pitch) — one preset, not two
+    'snow_day': {
+        label: 'Snow Day',
+        game_mode: 'Hockey',
+        mutators: {
+            match_length: '5 Minutes',
+            max_score: 'Unlimited',
+            overtime: 'Unlimited',
+            series_length: 'Unlimited',
+            game_speed: 'Default',
+            ball_max_speed: 'Default',
+            ball_type: 'Puck',
+            ball_weight: 'Default',
+            ball_size: 'Default',
+            ball_bounciness: 'Default',
+            boost_amount: 'Default',
+            rumble: 'None',
+            boost_strength: '1x',
+            gravity: 'Default',
+            demolish: 'Default',
+            respawn_time: '3 Seconds'
+        }
+    },
+    'heatseeker': {
+        label: 'Heatseeker',
+        game_mode: 'Heatseeker',
+        mutators: {
+            match_length: '5 Minutes',
+            max_score: 'Unlimited',
+            overtime: 'Unlimited',
+            series_length: 'Unlimited',
+            game_speed: 'Default',
+            ball_max_speed: 'Default',
+            ball_type: 'Default',
+            ball_weight: 'Default',
+            ball_size: 'Default',
+            ball_bounciness: 'Default',
+            boost_amount: 'Default',
+            rumble: 'None',
+            boost_strength: '1x',
+            gravity: 'Default',
+            demolish: 'Default',
+            respawn_time: '3 Seconds'
+        }
+    },
+    'gridiron': {
+        label: 'Gridiron',
+        game_mode: 'Gridiron',
+        mutators: {
+            match_length: '5 Minutes',
+            max_score: 'Unlimited',
+            overtime: 'Unlimited',
+            series_length: 'Unlimited',
+            game_speed: 'Default',
+            ball_max_speed: 'Default',
+            ball_type: 'Default',
+            ball_weight: 'Default',
+            ball_size: 'Default',
+            ball_bounciness: 'Default',
+            boost_amount: 'Default',
+            rumble: 'None',
+            boost_strength: '1x',
+            gravity: 'Default',
+            demolish: 'Default',
+            respawn_time: '3 Seconds'
+        }
+    },
+    // Popular community mutator mixes
+    'boomer_ball': {
+        label: 'Boomer Ball',
+        game_mode: 'Soccer',
+        mutators: {
+            match_length: '5 Minutes',
+            max_score: 'Unlimited',
+            overtime: 'Unlimited',
+            series_length: 'Unlimited',
+            game_speed: 'Default',
+            ball_max_speed: 'Super Fast',
+            ball_type: 'Default',
+            ball_weight: 'Super Light',
+            ball_size: 'Default',
+            ball_bounciness: 'Super High',
+            boost_amount: 'Unlimited',
+            rumble: 'None',
+            boost_strength: '1x',
+            gravity: 'Default',
+            demolish: 'Default',
+            respawn_time: '3 Seconds'
+        }
+    },
+    'moon_ball': {
+        label: 'Moon Ball',
+        game_mode: 'Soccer',
+        mutators: {
+            match_length: '5 Minutes',
+            max_score: 'Unlimited',
+            overtime: 'Unlimited',
+            series_length: 'Unlimited',
+            game_speed: 'Default',
+            ball_max_speed: 'Default',
+            ball_type: 'Default',
+            ball_weight: 'Light',
+            ball_size: 'Default',
+            ball_bounciness: 'Default',
+            boost_amount: 'Default',
+            rumble: 'None',
+            boost_strength: '1x',
+            gravity: 'Low',
+            demolish: 'Default',
+            respawn_time: '3 Seconds'
+        }
+    },
+    'beach_ball': {
+        label: 'Beach Ball',
+        game_mode: 'Soccer',
+        mutators: {
+            match_length: '5 Minutes',
+            max_score: 'Unlimited',
+            overtime: 'Unlimited',
+            series_length: 'Unlimited',
+            game_speed: 'Default',
+            ball_max_speed: 'Fast',
+            ball_type: 'Basketball',
+            ball_weight: 'Super Light',
+            ball_size: 'Gigantic',
+            ball_bounciness: 'Super High',
+            boost_amount: 'Unlimited',
             rumble: 'None',
             boost_strength: '1x',
             gravity: 'Default',
@@ -120,7 +276,7 @@ const MUTATOR_PRESETS = {
         game_mode: 'Soccer',
         mutators: {
             match_length: '5 Minutes',
-            max_score: '5 Goals',
+            max_score: 'Unlimited',
             overtime: 'Unlimited',
             series_length: 'Unlimited',
             game_speed: 'Default',
@@ -137,91 +293,47 @@ const MUTATOR_PRESETS = {
             respawn_time: '3 Seconds'
         }
     },
-    'boomer': {
-        label: 'Boomer (Big Ball)',
+    'pinball': {
+        label: 'Pinball',
         game_mode: 'Soccer',
         mutators: {
             match_length: '5 Minutes',
-            max_score: '5 Goals',
+            max_score: 'Unlimited',
             overtime: 'Unlimited',
             series_length: 'Unlimited',
             game_speed: 'Default',
-            ball_max_speed: 'Default',
+            ball_max_speed: 'Super Fast',
             ball_type: 'Default',
-            ball_weight: 'Default',
-            ball_size: 'Gigantic',
-            ball_bounciness: 'Default',
-            boost_amount: 'Default',
-            rumble: 'None',
+            ball_weight: 'Heavy',
+            ball_size: 'Small',
+            ball_bounciness: 'High',
+            boost_amount: 'Recharge (Slow)',
+            rumble: 'Spring Loaded',
             boost_strength: '1x',
-            gravity: 'Default',
+            gravity: 'Super High',
             demolish: 'Default',
             respawn_time: '3 Seconds'
         }
     },
-    'drop_shot': {
-        label: 'Drop Shot',
-        game_mode: 'Dropshot',
-        mutators: {
-            match_length: '5 Minutes',
-            max_score: '5 Goals',
-            overtime: 'Unlimited',
-            series_length: 'Unlimited',
-            game_speed: 'Default',
-            ball_max_speed: 'Default',
-            ball_type: 'Default',
-            ball_weight: 'Default',
-            ball_size: 'Default',
-            ball_bounciness: 'Default',
-            boost_amount: 'Default',
-            rumble: 'None',
-            boost_strength: '1x',
-            gravity: 'Low',
-            demolish: 'Default',
-            respawn_time: '3 Seconds'
-        }
-    },
-    'snow_day': {
-        label: 'Snow Day (Low Gravity)',
+    'demolition_derby': {
+        label: 'Demolition Derby',
         game_mode: 'Soccer',
         mutators: {
             match_length: '5 Minutes',
-            max_score: '5 Goals',
+            max_score: 'Unlimited',
             overtime: 'Unlimited',
             series_length: 'Unlimited',
             game_speed: 'Default',
-            ball_max_speed: 'Default',
+            ball_max_speed: 'Slow',
             ball_type: 'Default',
-            ball_weight: 'Default',
-            ball_size: 'Default',
-            ball_bounciness: 'Low',
-            boost_amount: 'Default',
-            rumble: 'None',
-            boost_strength: '1x',
-            gravity: 'Low',
-            demolish: 'Default',
-            respawn_time: '3 Seconds'
-        }
-    },
-    'hockey': {
-        label: 'Hockey (Puck)',
-        game_mode: 'Hockey',
-        mutators: {
-            match_length: '5 Minutes',
-            max_score: '5 Goals',
-            overtime: 'Unlimited',
-            series_length: 'Unlimited',
-            game_speed: 'Default',
-            ball_max_speed: 'Default',
-            ball_type: 'Puck',
-            ball_weight: 'Default',
-            ball_size: 'Default',
-            ball_bounciness: 'Low',
-            boost_amount: 'Default',
-            rumble: 'None',
+            ball_weight: 'Heavy',
+            ball_size: 'Large',
+            ball_bounciness: 'Default',
+            boost_amount: 'Recharge (Slow)',
+            rumble: 'Destruction Derby',
             boost_strength: '1x',
             gravity: 'Default',
-            demolish: 'Default',
+            demolish: 'On Contact',
             respawn_time: '3 Seconds'
         }
     }
@@ -302,6 +414,7 @@ export default {
             gameModeOptions: ['Soccer', 'Hoops', 'Dropshot', 'Hockey', 'Rumble', 'Heatseeker', 'Gridiron'],
             // Phase 4: Mutator presets
             selectedPreset: 'custom',   // Currently selected mutator preset key
+            customPresets: {},          // User-saved presets from localStorage { key: {label, game_mode, mutators} }
             // Phase 4: Match history view
             matchHistory: null,         // Match history data from eel.tournament_get_match_history()
             expandedHistoryMatches: {}, // { match_id: true } for expanded stats
@@ -310,6 +423,10 @@ export default {
         };
     },
     computed: {
+        // All presets: built-in presets merged with user-saved custom presets
+        allPresets() {
+            return { ...MUTATOR_PRESETS, ...this.customPresets };
+        },
         formatLabel() {
             if (!this.tournamentState) return '';
             const labels = {
@@ -2066,22 +2183,35 @@ export default {
             this.selectedPreset = 'custom';
         },
 
-        // Phase 4: When the game mode changes, sync the map and mutator preset
-        // to the mode's canonical defaults (e.g. Hoops → Dunk House, Gridiron →
-        // Champions Field NFL). The operator can still adjust anything afterwards.
-        onGameModeChange(mode) {
-            const modeDefaults = {
-                'Soccer': { map: 'DFHStadium', preset: 'standard' },
-                'Hoops': { map: 'Hoops_DunkHouse', preset: 'hoops' },
-                'Dropshot': { map: 'DropShot_Core707', preset: 'drop_shot' },
-                'Hockey': { map: 'DFHStadium', preset: 'hockey' },
-                'Rumble': { map: 'DFHStadium', preset: 'rumble' },
-                'Heatseeker': { map: 'DFHStadium', preset: 'standard' },
-                'Gridiron': { map: 'ChampionsField_NFL', preset: 'standard' }
+        // Canonical map for each game mode (used by both preset application and
+        // the manual game-mode selector).
+        modeMap(mode) {
+            const modeMaps = {
+                'Soccer': 'DFHStadium',
+                'Hoops': 'Hoops_DunkHouse',
+                'Dropshot': 'DropShot_Core707',
+                'Hockey': 'DFHStadium_Snowy',
+                'Rumble': 'DFHStadium',
+                'Heatseeker': 'DFHStadium',
+                'Gridiron': 'ChampionsField_NFL'
             };
-            const def = modeDefaults[mode] || modeDefaults['Soccer'];
-            this.newTournament.map = def.map;
-            this.applyPreset(def.preset);
+            return modeMaps[mode] || 'DFHStadium';
+        },
+
+        // Phase 4: When the game mode is changed manually, sync the map and apply
+        // the mode's canonical preset (e.g. Hoops → Dunk House + hoops mutators).
+        // The operator can still adjust anything afterwards.
+        onGameModeChange(mode) {
+            const modePresets = {
+                'Soccer': 'standard',
+                'Hoops': 'hoops',
+                'Dropshot': 'drop_shot',
+                'Hockey': 'snow_day',
+                'Rumble': 'rumble',
+                'Heatseeker': 'heatseeker',
+                'Gridiron': 'gridiron'
+            };
+            this.applyPreset(modePresets[mode] || 'standard');
         },
 
         // ------------------------------------------------------------------
@@ -2119,15 +2249,72 @@ export default {
         // ------------------------------------------------------------------
         applyPreset(presetKey) {
             this.selectedPreset = presetKey;
-            if (presetKey === 'custom' || !MUTATOR_PRESETS[presetKey]) {
+            if (presetKey === 'custom' || !this.allPresets[presetKey]) {
                 // No preset — keep current values (or reset to defaults)
                 return;
             }
-            const preset = MUTATOR_PRESETS[presetKey];
+            const preset = this.allPresets[presetKey];
             this.newTournament.mutators = { ...DEFAULT_MUTATORS, ...preset.mutators };
-            // NOTE: do NOT set game_mode here. The game mode is the source of truth
-            // for the map/preset sync; setting it here would re-trigger the
-            // game_mode watcher and clobber the map the user just selected.
+            // Apply the preset's game mode and its canonical map. The flag
+            // suppresses the game_mode watcher so it doesn't re-apply the mode's
+            // default preset and clobber the preset the user just selected
+            // (e.g. Boomer Ball must NOT be overwritten by the 'standard' preset).
+            if (preset.game_mode) {
+                this._applyingPreset = true;
+                this.newTournament.game_mode = preset.game_mode;
+                this.newTournament.map = this.modeMap(preset.game_mode);
+                this.$nextTick(() => { this._applyingPreset = false; });
+            }
+        },
+
+        // Load user-saved custom presets from localStorage into reactive state.
+        loadCustomPresets() {
+            try {
+                const raw = localStorage.getItem('rlbot_custom_presets');
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (parsed && typeof parsed === 'object') {
+                        this.customPresets = parsed;
+                    }
+                }
+            } catch (e) {
+                console.error('Error loading custom presets:', e);
+            }
+        },
+
+        // Save the current mutator settings as a named custom preset in localStorage.
+        saveAsCustomPreset() {
+            const name = window.prompt('Name this custom preset:');
+            if (!name || !name.trim()) return;
+            const key = 'custom_' + name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
+            const presets = { ...this.customPresets };
+            presets[key] = {
+                label: name.trim(),
+                game_mode: this.newTournament.game_mode,
+                mutators: { ...this.newTournament.mutators }
+            };
+            this.customPresets = presets;
+            try {
+                localStorage.setItem('rlbot_custom_presets', JSON.stringify(presets));
+            } catch (e) {
+                console.error('Error saving custom preset:', e);
+            }
+            this.selectedPreset = key;
+        },
+
+        // Delete a user-saved custom preset by key.
+        deleteCustomPreset(key) {
+            const presets = { ...this.customPresets };
+            delete presets[key];
+            this.customPresets = presets;
+            try {
+                localStorage.setItem('rlbot_custom_presets', JSON.stringify(presets));
+            } catch (e) {
+                console.error('Error deleting custom preset:', e);
+            }
+            if (this.selectedPreset === key) {
+                this.selectedPreset = 'custom';
+            }
         },
 
         // ------------------------------------------------------------------
@@ -2196,12 +2383,22 @@ export default {
             }
         },
 
+        // Format a whole-second duration as mm:ss.
+        formatDuration(seconds) {
+            if (seconds === null || seconds === undefined) return '';
+            const s = Math.max(0, Math.floor(seconds));
+            const mm = Math.floor(s / 60);
+            const ss = s % 60;
+            return `${mm}:${String(ss).padStart(2, '0')}`;
+        },
+
         // Build a CSV string from the match history data.
         buildHistoryCSV() {
             if (!this.matchHistory || !Array.isArray(this.matchHistory.rounds)) return '';
             const headers = [
-                'Round', 'Match ID', 'Team 1', 'Team 2',
-                'Score 1', 'Score 2', 'Winner', 'Completed'
+                'Round', 'Bracket', 'Match ID', 'Team 1', 'Team 2',
+                'Score 1', 'Score 2', 'Winner', 'Completed',
+                'Duration', 'Overtime', 'Player Stats'
             ];
             const rows = [headers.join(',')];
             const esc = (v) => {
@@ -2213,15 +2410,22 @@ export default {
             };
             for (const round of this.matchHistory.rounds) {
                 for (const m of round.matches) {
+                    const statsStr = (m.player_stats || []).map(ps =>
+                        `${ps.name} (G${ps.goals} A${ps.assists} S${ps.saves} Sh${ps.shots} D${ps.demolitions} OG${ps.own_goals} Sc${ps.score})`
+                    ).join('; ');
                     const row = [
                         round.round_num,
+                        round.bracket,
                         m.match_id,
                         m.team1_name || m.participant1_name || '',
                         m.team2_name || m.participant2_name || '',
                         m.score ? m.score[0] : '',
                         m.score ? m.score[1] : '',
                         m.winner_name || '',
-                        m.completed ? 'Yes' : 'No'
+                        m.completed ? 'Yes' : 'No',
+                        (m.duration_seconds !== null && m.duration_seconds !== undefined) ? this.formatDuration(m.duration_seconds) : '',
+                        m.is_overtime ? 'Yes' : 'No',
+                        statsStr
                     ];
                     rows.push(row.map(esc).join(','));
                 }
@@ -2546,6 +2750,9 @@ export default {
         applyTemplate(tpl) {
             // Pre-fill the create-tournament modal from the template config.
             const cfg = tpl.config || {};
+            // Guard the game_mode watcher so the template's own mutators aren't
+            // overwritten by the mode's canonical preset.
+            this._applyingPreset = true;
             this.newTournament.format = cfg.format || 'single_elimination';
             this.newTournament.team_size = cfg.team_size || 1;
             this.newTournament.allow_duplicates = !!cfg.allow_duplicates;
@@ -2555,6 +2762,7 @@ export default {
             this.newTournament.human_count = cfg.human_count || 0;
             this.newTournament.human_names = cfg.human_names || [];
             this.newTournament.name = '';
+            this.$nextTick(() => { this._applyingPreset = false; });
             this.showCreateModal();
         },
 
@@ -2821,6 +3029,8 @@ export default {
 
         // Phase 4: Load available maps for the map selector
         this.loadMapOptions();
+        // Phase 4: Load user-saved custom mutator presets
+        this.loadCustomPresets();
     },
     beforeDestroy() {
         if (this._bracketResizeHandler) {
@@ -2857,9 +3067,12 @@ export default {
                 this.newTournament.human_names = names.slice(0, c);
             }
         },
-        // Phase 4: changing the game mode also updates the map + preset
+        // Phase 4: changing the game mode also updates the map + preset.
+        // Skipped while a preset is being applied (applyPreset sets game_mode
+        // itself and must not have its mutators overwritten by the mode default).
         'newTournament.game_mode': {
             handler(newMode) {
+                if (this._applyingPreset) return;
                 this.onGameModeChange(newMode);
             }
         }

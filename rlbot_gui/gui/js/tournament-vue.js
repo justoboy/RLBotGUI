@@ -262,7 +262,7 @@ const MUTATOR_PRESETS = {
             ball_type: 'Basketball',
             ball_weight: 'Super Light',
             ball_size: 'Gigantic',
-            ball_bounciness: 'Super High',
+            ball_bounciness: 'Default',
             boost_amount: 'Unlimited',
             rumble: 'None',
             boost_strength: '1x',
@@ -310,7 +310,7 @@ const MUTATOR_PRESETS = {
             boost_amount: 'Recharge (Slow)',
             rumble: 'Spring Loaded',
             boost_strength: '1x',
-            gravity: 'Super High',
+            gravity: 'Default',
             demolish: 'Default',
             respawn_time: '3 Seconds'
         }
@@ -372,9 +372,6 @@ export default {
             isSaving: false,
             MUTATOR_OPTIONS: MUTATOR_OPTIONS,
             MUTATOR_PRESETS: MUTATOR_PRESETS,
-            // Phase 3: LAN Match Workflow (staging -> Players Ready -> real match)
-            stagingMatchId: null,       // match_id currently in the staging phase
-            stagingHumanCount: 0,       // number of humans in the staging match
             showCreateModalDialog: false, // v-model fallback for create tournament modal
             // Phase 3: Team balance indicator
             teamBalance: null,          // {balanced, spread, strengths}
@@ -401,6 +398,7 @@ export default {
             autoStartHumanBehavior: 'pause',  // 'continue', 'pause', or 'skip' for human matches
             autoStartTimer: null,       // Timer interval reference
             autoStartCountdown: null,   // Current countdown value
+            matchPollingInterval: null, // Match completion polling interval reference
             // Phase 4: Human Match Info Modal
             currentMatchSettings: null,   // Current match settings for info modal
             currentHumanCount: 0,         // Current human count for info modal
@@ -1558,6 +1556,14 @@ export default {
                     }
                 }
             }
+            // Also search losers bracket matches (double elimination)
+            for (const roundData of this.losersBracketMatchesByRound) {
+                for (const match of roundData.matches) {
+                    if (match.match_id === matchId) {
+                        return match;
+                    }
+                }
+            }
             return null;
         },
         
@@ -1575,8 +1581,11 @@ export default {
             }
         },
         
-        // Start the selected match (called by Start Match button or Enter key)
-        async startSelectedMatch() {
+        // Start the selected match (called by Start Match button or Enter key).
+        // When manual is true (button click / Enter key), the auto-start human
+        // behavior ('pause'/'skip') is ignored — those settings must only gate
+        // automatic starts, never manual ones.
+        async startSelectedMatch(manual = false) {
             // If a match is selected, start it
             if (this.selectedMatchId) {
                 const match = this.findMatchById(this.selectedMatchId);
@@ -1590,8 +1599,9 @@ export default {
                 return;
             }
             
-            // No match selected - find the next match to start (for auto-start)
-            const nextMatch = this.findNextAutoStartMatch();
+            // No match selected - find the next match to start.
+            // Manual starts ignore the auto-start human behavior setting.
+            const nextMatch = this.findNextAutoStartMatch(manual);
             if (nextMatch) {
                 await this.onMatchClick(nextMatch);
             }
@@ -1681,7 +1691,9 @@ export default {
         // Find the next match that can be auto-started
         // For double elimination, prefer LB matches that are ready, only play WB matches
         // when LB matches are waiting for WB losers
-        findNextAutoStartMatch() {
+        // When ignoreHumanBehavior is true (manual start), the autoStartHumanBehavior
+        // setting is ignored so 'pause'/'skip' never block a manual start.
+        findNextAutoStartMatch(ignoreHumanBehavior = false) {
             const isDoubleElim = this.tournamentState && this.tournamentState.format === 'double_elimination';
             
             if (isDoubleElim) {
@@ -1693,7 +1705,7 @@ export default {
                         if (!match.participant1 || !match.participant2) continue;
                         
                         // Check if match has humans
-                        if (this.matchHasHumans(match)) {
+                        if (!ignoreHumanBehavior && this.matchHasHumans(match)) {
                             if (this.autoStartHumanBehavior === 'skip') {
                                 continue;
                             } else if (this.autoStartHumanBehavior === 'pause') {
@@ -1714,7 +1726,7 @@ export default {
                         if (!match.participant1 || !match.participant2) continue;
                         
                         // Check if match has humans
-                        if (this.matchHasHumans(match)) {
+                        if (!ignoreHumanBehavior && this.matchHasHumans(match)) {
                             if (this.autoStartHumanBehavior === 'skip') {
                                 continue;
                             } else if (this.autoStartHumanBehavior === 'pause') {
@@ -1733,7 +1745,7 @@ export default {
                         if (!match.participant1 || !match.participant2) continue;
                         
                         // Check if match has humans
-                        if (this.matchHasHumans(match)) {
+                        if (!ignoreHumanBehavior && this.matchHasHumans(match)) {
                             if (this.autoStartHumanBehavior === 'skip') {
                                 continue;  // Skip this match, keep looking
                             } else if (this.autoStartHumanBehavior === 'pause') {
@@ -1747,13 +1759,13 @@ export default {
                 }
                 
                 // Check losers bracket matches (for double elimination when not using interleaved order)
-                for (const roundMatches of this.losersBracketMatchesByRound) {
-                    for (const match of roundMatches) {
+                for (const roundData of this.losersBracketMatchesByRound) {
+                    for (const match of roundData.matches) {
                         if (match.completed) continue;
                         if (!match.participant1 || !match.participant2) continue;
                         
                         // Check if match has humans
-                        if (this.matchHasHumans(match)) {
+                        if (!ignoreHumanBehavior && this.matchHasHumans(match)) {
                             if (this.autoStartHumanBehavior === 'skip') {
                                 continue;
                             } else if (this.autoStartHumanBehavior === 'pause') {
@@ -1884,9 +1896,10 @@ export default {
         
         // Keyboard shortcut handler (Enter key starts selected match)
         handleKeyPress(event) {
-            if (event.key === 'Enter' && this.selectedMatchId && !this.autoStartEnabled) {
+            if (event.key === 'Enter' && this.selectedMatchId) {
                 event.preventDefault();
-                this.startSelectedMatch();
+                // Manual start via Enter — ignore auto-start human behavior
+                this.startSelectedMatch(true);
             }
         },
 
@@ -2023,42 +2036,16 @@ export default {
             // Phase 4: Clear selection when starting a match
             this.selectedMatchId = null;
 
-            // Phase 3: LAN Match Workflow.
-            // If the match has humans, ask whether to use the staging flow
-            // (recommended) or start immediately (legacy behavior).
-            let useStaging = false;
-            if (eel.tournament_match_has_humans) {
-                try {
-                    const info = JSON.parse(await eel.tournament_match_has_humans(match.match_id)());
-                    if (info.has_humans) {
-                        const choice = confirm(
-                            `This match has ${info.human_count} human player(s).\n\n` +
-                            `RECOMMENDED: Open a staging lobby first so the host can set up the LAN host and let humans join, then start the real match with bots injected (no lobby teardown).\n\n` +
-                            `OK = Use staging flow\nCancel = Start immediately (host must pause quickly to set up LAN)`
-                        );
-                        useStaging = choice;
-                    }
-                } catch (e) {
-                    console.warn('Could not check for humans, proceeding without staging:', e);
-                }
-            }
-
-            // Start the match - it will launch automatically and record the winner
+            // Start the match - it will launch automatically and record the winner.
+            // Human matches no longer use the old staging flow: the backend just
+            // opens Rocket League and the operator hosts/joins via Rocket Plugin,
+            // then the match starts with "Continue and Spawn".
             try {
-                const result = await eel.tournament_start_match(match.match_id, useStaging)();
+                const result = await eel.tournament_start_match(match.match_id)();
                 const response = JSON.parse(result);
 
                 if (response.error) {
                     alert(response.error);
-                    return;
-                }
-
-                // Phase 3: If we launched a staging lobby, show the "Players Ready?" gate
-                // and do NOT start polling for match completion yet.
-                if (response.staging) {
-                    this.stagingMatchId = match.match_id;
-                    this.stagingHumanCount = response.human_count || 0;
-                    this.currentMatch = match;
                     return;
                 }
 
@@ -2556,40 +2543,6 @@ export default {
             }
         },
 
-        // ------------------------------------------------------------------
-        // Phase 3: LAN Match Workflow (staging -> Players Ready -> real match)
-        // ------------------------------------------------------------------
-        async confirmPlayersReady() {
-            if (!this.stagingMatchId) return;
-            const matchId = this.stagingMatchId;
-            this.stagingMatchId = null;
-            try {
-                const result = await eel.tournament_confirm_players_ready(matchId)();
-                const response = JSON.parse(result);
-                if (response.error) {
-                    alert('Error starting real match: ' + response.error);
-                    return;
-                }
-                // Real match is now launching - poll for completion.
-                this.matchInProgress = matchId;
-                this.startMatchPolling(matchId);
-            } catch (error) {
-                console.error('Error confirming players ready:', error);
-                alert('Error confirming players ready: ' + error);
-            }
-        },
-
-        async cancelStaging() {
-            if (!this.stagingMatchId) return;
-            const matchId = this.stagingMatchId;
-            this.stagingMatchId = null;
-            try {
-                await eel.tournament_cancel_staging(matchId)();
-            } catch (error) {
-                console.warn('Error cancelling staging:', error);
-            }
-        },
-
         // Shared polling helper used by both the direct and staging flows.
         startMatchPolling(matchId) {
             // Clear any existing polling interval first
@@ -2633,10 +2586,10 @@ export default {
                         this.onMatchComplete();
                     }
                 } catch (e) {
+                    console.warn('[Tournament] Match polling error:', e);
                 }
             }, 1000);
             this.matchPollingInterval = pollInterval;
-            setTimeout(() => { clearInterval(pollInterval); this.matchPollingInterval = null; }, 300000);
         },
 
         // ------------------------------------------------------------------
@@ -3044,6 +2997,11 @@ export default {
         }
         // Clear auto-start timer on component destroy
         this.clearAutoStartTimer();
+        // Clear match polling interval on component destroy
+        if (this.matchPollingInterval) {
+            clearInterval(this.matchPollingInterval);
+            this.matchPollingInterval = null;
+        }
     },
     watch: {
         // Watch for tournament state changes and redraw connectors

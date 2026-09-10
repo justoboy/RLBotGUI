@@ -52,7 +52,7 @@
     <!-- Phase 4: Start Match Button + Auto-Start Controls -->
     <div class="match-control-toolbar" v-if="tournamentState && !tournamentState.completed && !matchInProgress">
         <div class="match-control-left">
-            <b-button @click="startSelectedMatch" 
+            <b-button @click="startSelectedMatch(true)" 
                       variant="success" 
                       size="md"
                       title="Start the selected match (press Enter to start) or next available match">
@@ -102,26 +102,6 @@
                 <b-icon icon="hourglass-split" variant="info"></b-icon>
                 Next match in: {{ autoStartCountdown }}s
             </div>
-        </div>
-    </div>
-
-    <!-- LAN Match Workflow staging banner -->
-    <div class="lan-staging-banner" v-if="stagingMatchId">
-        <b-icon icon="wifi" font-scale="1.2" variant="info"></b-icon>
-        <div class="lan-staging-text">
-            <strong>Staging lobby open</strong> — {{ stagingHumanCount }} human(s) expected.
-            <span class="text-muted">
-                Host: press <b>Home</b> → <b>Host</b> in Rocket Plugin to open the port.
-                Each human: press <b>Home</b> → <b>Join</b> (their IP is saved).
-            </span>
-        </div>
-        <div class="lan-staging-actions">
-            <b-button @click="confirmPlayersReady" variant="success" size="sm">
-                <b-icon icon="check-circle"></b-icon> Players Ready — Start Match
-            </b-button>
-            <b-button @click="cancelStaging" variant="secondary" size="sm">
-                Cancel
-            </b-button>
         </div>
     </div>
 

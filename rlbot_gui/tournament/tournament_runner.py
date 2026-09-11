@@ -2,6 +2,7 @@
 Manages tournament state and execution
 """
 import json
+import random
 import uuid
 from datetime import datetime
 from typing import List, Dict, Any, Optional
@@ -36,6 +37,171 @@ from rlbot_gui.persistence.settings import load_settings, MATCH_SETTINGS_KEY, lo
 # Global state for current tournament
 CURRENT_TOURNAMENT: Optional[TournamentState] = None
 
+# Map pools per game mode, used when a tournament has map randomization enabled.
+# Each pool maps a map name to its selection weight. Weights mirror Rocket League's
+# official map rotation drop chances (normalized to the subset of rotation maps
+# RLBot can actually load). Maps that exist in RLBot but are outside a mode's
+# official rotation are included as extra rare (weight 1.0); special themed
+# variants are super rare (weight 0.25).
+#
+# Note: several rotation maps cannot be offered because RLBot cannot load them
+# (Futura Garden, Boostfield Mall, Parc de Paris, Drift Woods, NeoTokyo Arcade,
+# 10th Anniversary, Salty Fest, Salty Shallows, Quads and Knockout arenas).
+
+# Base soccar pool: rotation maps at their real drop chances.
+SOCCAR_ROTATION_WEIGHTS: Dict[str, float] = {
+    'DFHStadium': 7.67,
+    'Mannfield': 7.67,
+    'BeckwithPark': 4.93,
+    'ChampionsField': 4.56,
+    'UtopiaColiseum': 4.38,
+    'UrbanCentral': 4.01,
+    'Farmstead_Pitched': 3.65,
+    'ForbiddenTemple': 3.65,
+    'NeoTokyo': 3.65,
+    'Wasteland_Pitched': 3.65,
+    'EstadioVida_Dusk': 2.92,
+    'SovereignHeights': 2.74,
+    'AquaDome': 2.74,
+    'DeadeyeCanyon_Oasis': 2.55,
+    'ChampionsField_Day': 2.37,
+    'ForbiddenTemple_Day': 2.37,
+    'BeckwithPark_Midnight': 1.46,
+    'UtopiaColiseum_Gilded': 1.27,
+    'Mannfield_Dusk': 1.09,
+    'DFHStadium_Day': 1.02,
+    'UrbanCentral_Dawn': 0.91,
+    'UrbanCentral_Night': 0.91,
+    'BeckwithPark_Stormy': 0.73,
+    'Mannfield_Night': 0.73,
+    'DFHStadium_Stormy': 0.58,
+    'UtopiaColiseum_Dusk': 0.54,
+    'Mannfield_Stormy': 0.36,
+}
+
+# Extra rare: plain soccar maps that are outside the current rotation.
+SOCCAR_EXTRA_RARE_WEIGHTS: Dict[str, float] = {
+    'StarbaseArc': 1.0,
+    'SaltyShores': 1.0,
+    'SaltyShores_Night': 1.0,
+    'Wasteland': 1.0,
+    'Farmstead_Night': 1.0,
+    'DeadeyeCanyon': 1.0,
+}
+
+# Super rare: special themed variants of soccar arenas.
+SOCCAR_SUPER_RARE_WEIGHTS: Dict[str, float] = {
+    'StarbaseArc_Aftermath': 0.25,
+    'DFHStadium_Circuit': 0.25,
+    'NeonFields': 0.25,
+    'RivalsArena': 0.25,
+    'BeckwithPark_GothamNight': 0.25,
+    'Farmstead_Spooky': 0.25,
+    'Farmstead_Upsidedown': 0.25,
+    'NeoTokyo_Comic': 0.25,
+    'Neotokyo_Hacked': 0.25,
+    'ForbiddenTemple_FireAndIce': 0.25,
+    'ChampionsField_NikeFC': 0.25,
+    'UrbanCentral_Haunted': 0.25,
+}
+
+SOCCAR_MAP_POOL: Dict[str, float] = {
+    **SOCCAR_ROTATION_WEIGHTS,
+    **SOCCAR_EXTRA_RARE_WEIGHTS,
+    **SOCCAR_SUPER_RARE_WEIGHTS,
+}
+
+# Rumble pool: rumble rotation drop chances (available maps only).
+RUMBLE_MAP_POOL: Dict[str, float] = {
+    'DFHStadium': 6.1,
+    'Mannfield': 6.1,
+    'BeckwithPark': 3.92,
+    'ChampionsField': 3.63,
+    'UtopiaColiseum': 3.49,
+    'UrbanCentral': 3.2,
+    'Arctagon': 2.9,
+    'Badlands': 2.9,
+    'Badlands_Night': 2.9,
+    'DoubleGoal': 2.9,
+    'Farmstead_Pitched': 2.9,
+    'ForbiddenTemple': 2.9,
+    'NeoTokyo': 2.9,
+    'ThrowbackStadium': 2.9,
+    'TokyoUnderpass': 2.9,
+    'Underpass': 2.9,
+    'Wasteland_Pitched': 2.9,
+    'AquaDome': 4.5,
+    'EstadioVida_Dusk': 2.32,
+    'SovereignHeights': 2.18,
+    'DeadeyeCanyon_Oasis': 2.03,
+    'ChampionsField_Day': 1.89,
+    'ForbiddenTemple_Day': 1.89,
+    'BeckwithPark_Midnight': 1.16,
+    'UtopiaColiseum_Gilded': 1.01,
+    'Mannfield_Dusk': 0.87,
+    'DFHStadium_Day': 0.81,
+    'UrbanCentral_Dawn': 0.72,
+    'UrbanCentral_Night': 0.72,
+    'BeckwithPark_Stormy': 0.58,
+    'Mannfield_Night': 0.58,
+    'DFHStadium_Stormy': 0.46,
+    'UtopiaColiseum_Dusk': 0.43,
+    'Mannfield_Stormy': 0.29,
+    **SOCCAR_EXTRA_RARE_WEIGHTS,
+    **SOCCAR_SUPER_RARE_WEIGHTS,
+}
+
+# Heatseeker pool: soccar maps plus the special LTM arenas (Up To No Good,
+# Haunted Heatseeker, Heatseeker Ricochet, Spike Drop, Rocket Labs) as super rare.
+HEATSEEKER_MAP_POOL: Dict[str, float] = {
+    **SOCCAR_MAP_POOL,
+    'Basin': 0.25,
+    'Corridor': 0.25,
+    'Galleon': 0.25,
+    'GalleonRetro': 0.25,
+    'Loophole': 0.25,
+    'Hourglass': 0.25,
+    'Barricade': 0.25,
+    'Colossus': 0.25,
+    'Octagon': 0.25,
+    'Pillars': 0.25,
+    'Cosmic': 0.25,
+    'UtopiaRetro': 0.25,
+}
+
+# Hockey pool: Snow Day rotation maps at their real chances; the other snowy
+# variants (not in the Snow Day rotation) are extra rare.
+HOCKEY_MAP_POOL: Dict[str, float] = {
+    'DFHStadium_Snowy': 33.33,
+    'Mannfield_Snowy': 33.33,
+    'UtopiaColiseum_Snowy': 33.33,
+    'ThrowbackStadium_Snowy': 1.0,
+    'BeckwithPark_Snowy': 1.0,
+}
+
+MAP_POOLS: Dict[str, Dict[str, float]] = {
+    'Soccer': SOCCAR_MAP_POOL,
+    'Rumble': RUMBLE_MAP_POOL,
+    'Heatseeker': HEATSEEKER_MAP_POOL,
+    'Hoops': {'Hoops_DunkHouse': 50.0, 'Hoops_TheBlock': 50.0},
+    'Dropshot': {'DropShot_Core707': 100.0},
+    'Hockey': HOCKEY_MAP_POOL,
+    'Gridiron': {'ChampionsField_NFL': 100.0},
+}
+
+
+def pick_random_map(game_mode: str) -> str:
+    """
+    Weighted-random map selection for a game mode.
+
+    Picks from the mode's pool using each map's rotation weight, so common
+    rotation maps show up often and special variants stay rare.
+    """
+    pool = MAP_POOLS.get(game_mode) or SOCCAR_MAP_POOL
+    maps = list(pool.keys())
+    weights = list(pool.values())
+    return random.choices(maps, weights=weights, k=1)[0]
+
 
 def match_has_humans(match: Match) -> bool:
     """
@@ -66,7 +232,7 @@ def count_humans_in_match(match: Match) -> int:
 
 
 @eel.expose
-def tournament_new(name: str, tournament_format: str, participants_json: str, match_settings_json: str = '{}', team_size: int = 1, allow_duplicates: bool = False, swiss_tiebreakers_json: str = '[]', swiss_rounds: int = 0, map: str = '', game_mode: str = 'Soccer') -> str:
+def tournament_new(name: str, tournament_format: str, participants_json: str, match_settings_json: str = '{}', team_size: int = 1, allow_duplicates: bool = False, swiss_tiebreakers_json: str = '[]', swiss_rounds: int = 0, map: str = '', game_mode: str = 'Soccer', scripts_json: str = '[]', randomize_map: bool = False, mercy_rule: int = 0) -> str:
     """
     Create a new tournament.
     
@@ -86,6 +252,13 @@ def tournament_new(name: str, tournament_format: str, participants_json: str, ma
             and displayed in the Human Match Info modal.
         game_mode: Game mode for all matches (e.g. 'Soccer', 'Hoops', 'Dropshot',
             'Hockey', 'Rumble', 'Heatseeker', 'Gridiron').
+        scripts_json: JSON list of custom script configs to load into every match
+            (e.g. [{'name': 'Knockout', 'path': 'C:/.../blueprint.cfg'}]).
+        randomize_map: When True, each match picks a random map from the pool
+            for the tournament's game mode instead of using the fixed map.
+        mercy_rule: Goal differential that ends a match early (0 = disabled).
+            When one team leads by this many goals, the match ends immediately
+            and the score/stats up to that point are kept.
     
     Returns:
         JSON string of tournament state
@@ -97,6 +270,12 @@ def tournament_new(name: str, tournament_format: str, participants_json: str, ma
     
     # Parse match settings
     match_settings = json.loads(match_settings_json) if match_settings_json else {}
+
+    # Parse custom scripts
+    try:
+        scripts = json.loads(scripts_json) if scripts_json else []
+    except (json.JSONDecodeError, TypeError):
+        scripts = []
     
     # Parse Swiss tiebreakers
     try:
@@ -157,7 +336,10 @@ def tournament_new(name: str, tournament_format: str, participants_json: str, ma
         swiss_rounds=calculated_rounds,
         swiss_tiebreakers=swiss_tiebreakers if tournament_format == 'swiss' else [],
         map=selected_map,
-        game_mode=game_mode
+        game_mode=game_mode,
+        scripts=scripts,
+        randomize_map=randomize_map,
+        mercy_rule=max(0, int(mercy_rule or 0))
     )
     
     if team_size > 1:
@@ -489,6 +671,10 @@ def tournament_save() -> str:
 def tournament_save_state() -> str:
     """
     Save tournament state to QSettings and return JSON.
+
+    Also updates the corresponding entry in the saved-tournaments list so that
+    reopening the app and re-selecting the tournament restores the latest
+    progress (match results, winner, etc.) instead of the creation-time state.
     """
     global CURRENT_TOURNAMENT
     
@@ -498,7 +684,33 @@ def tournament_save_state() -> str:
     settings = QSettings("rlbotgui", "tournament_save")
     serialized = CURRENT_TOURNAMENT.to_dict()
     settings.setValue("save", json.dumps(serialized))
-    
+
+    # Keep the saved-tournaments list entry in sync with the latest state so
+    # progress isn't lost when the app is closed and the tournament is reloaded.
+    list_json = settings.value(TOURNAMENTS_LIST_KEY, type=str)
+    try:
+        tournaments_list = json.loads(list_json) if list_json else []
+    except (json.JSONDecodeError, TypeError):
+        tournaments_list = []
+    tournament_meta = {
+        'tournament_id': CURRENT_TOURNAMENT.tournament_id,
+        'name': CURRENT_TOURNAMENT.name,
+        'format': CURRENT_TOURNAMENT.format,
+        'participants': [p.to_dict() for p in CURRENT_TOURNAMENT.participants],
+        'completed': CURRENT_TOURNAMENT.completed,
+        'save_data': json.dumps(serialized)
+    }
+    existing_index = None
+    for i, t in enumerate(tournaments_list):
+        if t.get('tournament_id') == CURRENT_TOURNAMENT.tournament_id:
+            existing_index = i
+            break
+    if existing_index is not None:
+        tournaments_list[existing_index] = tournament_meta
+    else:
+        tournaments_list.append(tournament_meta)
+    settings.setValue(TOURNAMENTS_LIST_KEY, json.dumps(tournaments_list))
+
     return json.dumps(serialized)
 
 
@@ -630,18 +842,36 @@ def tournament_start_match(match_id: str, use_staging: bool = False) -> str:
     if saved_behavior not in ('Restart If Different', 'Restart', 'Continue And Spawn'):
         saved_behavior = 'Restart If Different'
 
+    # Read all non-tournament-specific settings from the main GUI so the
+    # operator can change them mid-tournament without a tournament-specific option.
+    saved_skip_replays = saved_match_settings.get('skip_replays', False)
+    saved_auto_save_replay = saved_match_settings.get('auto_save_replay', False)
+    saved_instant_start = saved_match_settings.get('instant_start', False)
+    saved_enable_lockstep = saved_match_settings.get('enable_lockstep', False)
+    saved_enable_rendering = saved_match_settings.get('enable_rendering', False)
+    saved_enable_state_setting = saved_match_settings.get('enable_state_setting', False)
+
+    # Determine the map for this match: either the fixed selection or a weighted
+    # random pick from the game mode's pool when randomize_map is enabled.
+    game_mode = CURRENT_TOURNAMENT.game_mode or 'Soccer'
+    if CURRENT_TOURNAMENT.randomize_map:
+        selected_map = pick_random_map(game_mode)
+    else:
+        selected_map = CURRENT_TOURNAMENT.map if CURRENT_TOURNAMENT.map else 'DFHStadium'
+
     match_settings = {
-        'game_mode': CURRENT_TOURNAMENT.game_mode or 'Soccer',
-        'map': CURRENT_TOURNAMENT.map if CURRENT_TOURNAMENT.map else 'DFHStadium',
-        'skip_replays': True,
-        'instant_start': False,
-        'enable_lockstep': False,
-        'enable_rendering': True,
-        'enable_state_setting': False,
-        'auto_save_replay': False,
+        'game_mode': game_mode,
+        'map': selected_map,
+        'skip_replays': saved_skip_replays,
+        'instant_start': saved_instant_start,
+        'enable_lockstep': saved_enable_lockstep,
+        'enable_rendering': saved_enable_rendering,
+        'enable_state_setting': saved_enable_state_setting,
+        'auto_save_replay': saved_auto_save_replay,
         'match_behavior': saved_behavior,
         'mutators': mutators,
-        'scripts': []
+        'scripts': CURRENT_TOURNAMENT.scripts or [],
+        'mercy_rule': CURRENT_TOURNAMENT.mercy_rule or 0
     }
     
     has_humans = match_has_humans(match)
@@ -1928,6 +2158,8 @@ def tournament_get_statistics() -> str:
       - matches_played, wins, losses, draws
       - goals_for, goals_against, goal_difference
       - win_rate (0.0-1.0)
+      - score, assists, saves, shots, demolitions, own_goals (aggregated from
+        per-player stats captured from each match's final game tick packet)
     Plus overall tournament stats:
       - total_matches, completed_matches, total_goals
 
@@ -1949,6 +2181,17 @@ def tournament_get_statistics() -> str:
         entities = {p.participant_id: {'name': p.name, 'type': p.participant_type}
                     for p in CURRENT_TOURNAMENT.participants}
 
+    # Map participant name -> entity id so per-player stats can be attributed to
+    # the right participant (1v1) or team (team mode).
+    name_to_eid: Dict[str, str] = {}
+    if is_team_mode:
+        for t in CURRENT_TOURNAMENT.teams:
+            for p in t.participants:
+                name_to_eid[p.name] = t.team_id
+    else:
+        for p in CURRENT_TOURNAMENT.participants:
+            name_to_eid[p.name] = p.participant_id
+
     stats = {
         eid: {
             'name': info['name'],
@@ -1960,7 +2203,15 @@ def tournament_get_statistics() -> str:
             'goals_for': 0,
             'goals_against': 0,
             'goal_difference': 0,
-            'win_rate': 0.0
+            'win_rate': 0.0,
+            'points': 0,
+            # Aggregated per-player stats (from each match's final packet)
+            'score': 0,
+            'assists': 0,
+            'saves': 0,
+            'shots': 0,
+            'demolitions': 0,
+            'own_goals': 0
         } for eid, info in entities.items()
     }
 
@@ -1989,21 +2240,38 @@ def tournament_get_statistics() -> str:
             stats[p2_id]['goals_for'] += s2
             stats[p2_id]['goals_against'] += s1
 
+        # Aggregate per-player stats onto the owning entity.
+        for ps in (match.player_stats or []):
+            eid = name_to_eid.get(ps.get('name'))
+            if eid is None or eid not in stats:
+                continue
+            s = stats[eid]
+            s['score'] += int(ps.get('score', 0) or 0)
+            s['assists'] += int(ps.get('assists', 0) or 0)
+            s['saves'] += int(ps.get('saves', 0) or 0)
+            s['shots'] += int(ps.get('shots', 0) or 0)
+            s['demolitions'] += int(ps.get('demolitions', 0) or 0)
+            s['own_goals'] += int(ps.get('own_goals', 0) or 0)
+
         if s1 > s2:
             if p1_id in stats:
                 stats[p1_id]['wins'] += 1
+                stats[p1_id]['points'] += 3
             if p2_id in stats:
                 stats[p2_id]['losses'] += 1
         elif s2 > s1:
             if p2_id in stats:
                 stats[p2_id]['wins'] += 1
+                stats[p2_id]['points'] += 3
             if p1_id in stats:
                 stats[p1_id]['losses'] += 1
         else:
             if p1_id in stats:
                 stats[p1_id]['draws'] += 1
+                stats[p1_id]['points'] += 1
             if p2_id in stats:
                 stats[p2_id]['draws'] += 1
+                stats[p2_id]['points'] += 1
 
     # Finalize derived stats
     for eid, s in stats.items():
@@ -2011,8 +2279,8 @@ def tournament_get_statistics() -> str:
         if s['matches_played'] > 0:
             s['win_rate'] = round(s['wins'] / s['matches_played'], 3)
 
-    # Sort by wins desc, then goal difference desc
-    ranked = sorted(stats.values(), key=lambda x: (-x['wins'], -x['goal_difference'], -x['goals_for']))
+    # Sort by points desc (3 per win, 1 per draw), then goal difference, then goals for
+    ranked = sorted(stats.values(), key=lambda x: (-x['points'], -x['goal_difference'], -x['goals_for']))
 
     return json.dumps({
         'tournament_name': CURRENT_TOURNAMENT.name,

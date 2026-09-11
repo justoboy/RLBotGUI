@@ -114,6 +114,7 @@
             <b-form-select
                 id="tournament-map"
                 v-model="newTournament.map"
+                :disabled="newTournament.randomize_map"
             >
                 <b-form-select-option :value="''">Default (DFH Stadium)</b-form-select-option>
                 <b-form-select-option
@@ -124,8 +125,59 @@
                     {{ formatMapName(mapId) }}
                 </b-form-select-option>
             </b-form-select>
-            <small class="text-muted">
+            <small class="text-muted" v-if="!newTournament.randomize_map">
                 Select a map for all tournament matches. If not selected, RLBot will use DFH Stadium.
+            </small>
+            <b-form-checkbox
+                id="tournament-randomize-map"
+                v-model="newTournament.randomize_map"
+                class="mt-2"
+            >
+                Randomize map each match
+            </b-form-checkbox>
+            <small class="text-muted d-block" v-if="newTournament.randomize_map">
+                Each match will use a random map from the official rotation for the selected game mode.
+            </small>
+        </b-form-group>
+
+        <!-- Mercy Rule -->
+        <b-form-group label="Mercy Rule" label-for="tournament-mercy-rule">
+            <b-form-select
+                id="tournament-mercy-rule"
+                v-model="newTournament.mercy_rule"
+                :number="true"
+            >
+                <b-form-select-option :value="0">None</b-form-select-option>
+                <b-form-select-option :value="3">3 goal lead</b-form-select-option>
+                <b-form-select-option :value="5">5 goal lead</b-form-select-option>
+                <b-form-select-option :value="7">7 goal lead</b-form-select-option>
+                <b-form-select-option :value="10">10 goal lead</b-form-select-option>
+            </b-form-select>
+            <small class="text-muted">
+                If enabled, a match ends early when one team leads by this many goals.
+                The score and stats up to that point are kept.
+            </small>
+        </b-form-group>
+
+        <!-- Custom Scripts (event scripts, etc.) -->
+        <b-form-group v-if="scriptPool.length > 0" label="Scripts (Optional)" label-for="tournament-scripts">
+            <div class="tournament-script-list" style="max-height: 150px; overflow-y: auto; border: 1px solid #444; border-radius: 4px; padding: 4px 8px;">
+                <div
+                    v-for="script in scriptPool"
+                    :key="script.path"
+                    class="d-flex align-items-center"
+                    style="padding: 2px 0;"
+                >
+                    <b-form-checkbox
+                        :checked="isScriptSelected(script)"
+                        @change="toggleScriptSelection(script)"
+                    >
+                        {{ script.name }}
+                    </b-form-checkbox>
+                </div>
+            </div>
+            <small class="text-muted">
+                Selected scripts will be loaded into every tournament match.
             </small>
         </b-form-group>
 
@@ -552,7 +604,10 @@
             <h6>Current Tournament Settings:</h6>
             <ul v-if="currentMatchSettings && Object.keys(currentMatchSettings).length > 0">
                 <li><b>Game Mode:</b> {{ currentMatchSettings.game_mode || 'Soccer' }}</li>
-                <li><b>Map:</b> {{ currentMatchSettings.map || 'Default' }}</li>
+                <li v-if="tournamentState && tournamentState.randomize_map"><b>Map:</b> Randomized per match</li>
+                <li v-else><b>Map:</b> {{ currentMatchSettings.map || 'Default' }}</li>
+                <li><b>Mercy Rule:</b> {{ (tournamentState && tournamentState.mercy_rule) ? (tournamentState.mercy_rule + ' goal lead') : 'None' }}</li>
+                <li><b>Mercy Rule:</b> {{ (tournamentState && tournamentState.mercy_rule) ? (tournamentState.mercy_rule + ' goal lead') : 'None' }}</li>
                 <li><b>Match Length:</b> {{ currentMatchSettings.mutators?.match_length || '5 Minutes' }}</li>
                 <li><b>Max Score:</b> {{ currentMatchSettings.mutators?.max_score || '5 Goals' }}</li>
                 <li><b>Overtime:</b> {{ currentMatchSettings.mutators?.overtime || 'Unlimited' }}</li>

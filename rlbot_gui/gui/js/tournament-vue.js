@@ -362,10 +362,14 @@ export default {
                 mutators: { ...DEFAULT_MUTATORS },
                 map: '',  // Phase 4: Selected map ID (empty = default/random)
                 game_mode: 'Soccer',  // Phase 4: Game mode for all matches
+                randomize_map: false,  // Randomize map per-match from the game mode's weighted pool
+                scripts: [],  // Custom scripts (event scripts) loaded into every match
+                mercy_rule: 0,  // Goal lead that ends a match early (0 = disabled)
                 // Phase 4: Swiss format settings
                 swiss_rounds: 0,  // 0 = auto-calculate as ceil(log2(participants))
                 swiss_tiebreakers: ['score_differential', 'goals_scored', 'head_to_head']
             },
+            scriptPool: [],  // Available scripts from eel.scan_for_scripts()
             currentMatch: null,
             matchInProgress: null,
             savedTournaments: [],
@@ -1216,6 +1220,31 @@ export default {
             } else {
                 this.botPool = [];
             }
+            // Load available scripts (e.g. event scripts like Knockout) so they
+            // can be attached to tournament matches.
+            if (eel.scan_for_scripts) {
+                try {
+                    this.scriptPool = await eel.scan_for_scripts()();
+                } catch (err) {
+                    console.error('Error calling eel.scan_for_scripts:', err);
+                    this.scriptPool = [];
+                }
+            } else {
+                this.scriptPool = [];
+            }
+        },
+
+        toggleScriptSelection(script) {
+            const index = this.newTournament.scripts.findIndex(s => s.path === script.path);
+            if (index >= 0) {
+                this.newTournament.scripts.splice(index, 1);
+            } else {
+                this.newTournament.scripts.push({ name: script.name, path: script.path });
+            }
+        },
+
+        isScriptSelected(script) {
+            return this.newTournament.scripts.some(s => s.path === script.path);
         },
         
         toggleParticipantSelection(participant) {
@@ -1298,7 +1327,10 @@ export default {
                     swissTiebreakersJson,
                     swissRounds,
                     this.newTournament.map || '',
-                    this.newTournament.game_mode || 'Soccer'
+                    this.newTournament.game_mode || 'Soccer',
+                    JSON.stringify(this.newTournament.scripts || []),
+                    !!this.newTournament.randomize_map,
+                    Number(this.newTournament.mercy_rule) || 0
                 )();
 
                 console.log('[Tournament] tournament_new returned:', result.substring(0, 200));
@@ -1312,7 +1344,7 @@ export default {
                 this.tournamentState = state;
                 console.log('[Tournament] After: tournamentState is', this.tournamentState ? 'set' : 'null');
                 this.selectedParticipants = [];
-                this.newTournament = { name: '', format: 'single_elimination', team_size: 1, allow_duplicates: false, human_count: 0, human_names: [], mutators: { ...DEFAULT_MUTATORS }, map: '', game_mode: 'Soccer', swiss_rounds: 0, swiss_tiebreakers: ['score_differential', 'goals_scored', 'head_to_head'] };
+                this.newTournament = { name: '', format: 'single_elimination', team_size: 1, allow_duplicates: false, human_count: 0, human_names: [], mutators: { ...DEFAULT_MUTATORS }, map: '', game_mode: 'Soccer', randomize_map: false, scripts: [], mercy_rule: 0, swiss_rounds: 0, swiss_tiebreakers: ['score_differential', 'goals_scored', 'head_to_head'] };
                 this.selectedPreset = 'custom';
                 this.refreshTeamBalance();
                 this.refreshStats();
@@ -1653,16 +1685,21 @@ export default {
                     
                     if (nextNonHumanMatch) {
                         this.selectedMatchId = nextNonHumanMatch.match_id;
-                        this.autoStartCountdown = this.autoStartInterval;
-                        
-                        this.autoStartTimer = setInterval(() => {
-                            this.autoStartCountdown--;
+                        if (this.autoStartInterval === 0) {
+                            // Immediate: start right away, no countdown
+                            this.startSelectedMatch();
+                        } else {
+                            this.autoStartCountdown = this.autoStartInterval;
                             
-                            if (this.autoStartCountdown <= 0) {
-                                this.clearAutoStartTimer();
-                                this.startSelectedMatch();
-                            }
-                        }, 1000);
+                            this.autoStartTimer = setInterval(() => {
+                                this.autoStartCountdown--;
+                                
+                                if (this.autoStartCountdown <= 0) {
+                                    this.clearAutoStartTimer();
+                                    this.startSelectedMatch();
+                                }
+                            }, 1000);
+                        }
                     } else {
                         // No more matches without humans, pause auto-start
                         this.autoStartEnabled = false;
@@ -1674,7 +1711,14 @@ export default {
                 }
                 // 'continue' - proceed with auto-starting this match
             }
-            
+
+            // Immediate mode: start the match right away, no countdown
+            if (this.autoStartInterval === 0) {
+                this.selectedMatchId = nextMatch.match_id;
+                this.startSelectedMatch();
+                return;
+            }
+
             // Start countdown
             this.autoStartCountdown = this.autoStartInterval;
             
@@ -2682,6 +2726,9 @@ export default {
                 mutators: this.tournamentState.match_settings || {},
                 map: this.tournamentState.map || '',
                 game_mode: this.tournamentState.game_mode || 'Soccer',
+                randomize_map: !!this.tournamentState.randomize_map,
+                scripts: this.tournamentState.scripts || [],
+                mercy_rule: this.tournamentState.mercy_rule || 0,
                 human_count: 0,
                 human_names: []
             };
@@ -2712,6 +2759,9 @@ export default {
             this.newTournament.mutators = { ...DEFAULT_MUTATORS, ...(cfg.mutators || {}) };
             this.newTournament.map = cfg.map || '';
             this.newTournament.game_mode = cfg.game_mode || 'Soccer';
+            this.newTournament.randomize_map = !!cfg.randomize_map;
+            this.newTournament.scripts = cfg.scripts || [];
+            this.newTournament.mercy_rule = cfg.mercy_rule || 0;
             this.newTournament.human_count = cfg.human_count || 0;
             this.newTournament.human_names = cfg.human_names || [];
             this.newTournament.name = '';

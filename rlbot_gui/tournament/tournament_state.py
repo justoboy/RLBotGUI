@@ -177,6 +177,15 @@ class TournamentState:
     # Phase 4: Game mode (match main GUI options). Match behavior is owned by
     # the main GUI settings, not the tournament.
     game_mode: str = 'Soccer'  # e.g. 'Soccer', 'Hoops', 'Dropshot', 'Hockey', 'Rumble', 'Heatseeker', 'Gridiron'
+    # When True, each match picks a random map from the pool for the game mode
+    # instead of using the fixed `map` selection.
+    randomize_map: bool = False
+    # Custom script configs (e.g. event scripts) loaded into every match.
+    # Each entry: {'name': str, 'path': str}
+    scripts: List[Dict[str, Any]] = field(default_factory=list)
+    # Mercy rule: end a match early when one team leads by this many goals.
+    # 0 disables the mercy rule.
+    mercy_rule: int = 0
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -199,7 +208,10 @@ class TournamentState:
             'swiss_tiebreakers': self.swiss_tiebreakers,
             'swiss_playoff_scheduled': self.swiss_playoff_scheduled,
             'map': self.map,
-            'game_mode': self.game_mode
+            'game_mode': self.game_mode,
+            'randomize_map': self.randomize_map,
+            'scripts': self.scripts,
+            'mercy_rule': self.mercy_rule
         }
     
     @staticmethod
@@ -218,7 +230,10 @@ class TournamentState:
             swiss_tiebreakers=data.get('swiss_tiebreakers', []),
             swiss_playoff_scheduled=data.get('swiss_playoff_scheduled', False),
             map=data.get('map'),
-            game_mode=data.get('game_mode', 'Soccer')
+            game_mode=data.get('game_mode', 'Soccer'),
+            randomize_map=data.get('randomize_map', False),
+            scripts=data.get('scripts', []),
+            mercy_rule=data.get('mercy_rule', 0)
         )
         for p_data in data.get('participants', []):
             state.participants.append(Participant.from_dict(p_data))

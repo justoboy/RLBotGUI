@@ -8,7 +8,7 @@ from rlbot.matchconfig.match_config import PlayerConfig, MatchConfig, MutatorCon
 from rlbot.parsing.incrementing_integer import IncrementingInteger
 from rlbot.setup_manager import SetupManager, RocketLeagueLauncherPreference
 from rlbot.utils.structures.bot_input_struct import PlayerInput
-from rlbot.utils.game_state_util import GameState, CarState, BallState, Physics, Vector3, Rotator
+from rlbot.utils.game_state_util import GameState, CarState, BallState, GameInfoState, Physics, Vector3, Rotator
 from rlbot.utils.structures.game_data_struct import GameTickPacket
 
 from rlbot_gui.type_translation.set_state_translation import dict_to_game_state
@@ -209,7 +209,11 @@ def start_match_helper(bot_list: List[dict], match_settings: dict, launcher_pref
     match_config.instant_start = match_settings['instant_start']
     match_config.enable_lockstep = match_settings['enable_lockstep']
     match_config.enable_rendering = match_settings['enable_rendering']
-    match_config.enable_state_setting = match_settings['enable_state_setting']
+    # The mercy rule needs state setting enabled so we can force the match to
+    # end in-game when the goal differential threshold is reached.
+    mercy_rule = int(match_settings.get('mercy_rule', 0) or 0)
+    enable_state_setting = match_settings['enable_state_setting'] or mercy_rule > 0
+    match_config.enable_state_setting = enable_state_setting
     match_config.auto_save_replay = match_settings['auto_save_replay']
     match_config.existing_match_behavior = match_settings['match_behavior']
     match_config.mutators = MutatorConfig()
@@ -258,6 +262,10 @@ def start_match_helper(bot_list: List[dict], match_settings: dict, launcher_pref
         from rlbot.utils.structures.game_data_struct import GameTickPacket
         import time
         final_packet = None
+        # Mercy rule: end the match early when a team leads by this many goals
+        # (0 = disabled). Score/stats up to that point are kept as-is.
+        mercy_rule = int(match_settings.get('mercy_rule', 0) or 0)
+        mercy_triggered = False
         while True:
             # Check if shutdown was requested - exit immediately if so
             if shutdown_requested:
@@ -272,6 +280,19 @@ def start_match_helper(bot_list: List[dict], match_settings: dict, launcher_pref
                 if packet.game_info.is_match_ended:
                     final_packet = packet
                     break
+                # If mercy rule was triggered, wait for kickoff pause (goal replay finished) then end the match.
+                if mercy_triggered and packet.game_info.is_kickoff_pause:
+                    print(f"Mercy rule: kickoff pause detected, ending match.")
+                    sm.game_interface.set_game_state(
+                        GameState(game_info=GameInfoState(end_match=True)))
+                    final_packet = packet
+                    break
+                # Mercy rule: if a team's lead reaches the threshold, mark it and wait for goal replay to finish.
+                if mercy_rule > 0 and packet.num_teams >= 2:
+                    score_diff = abs(packet.teams[0].score - packet.teams[1].score)
+                    if score_diff >= mercy_rule:
+                        print(f"Mercy rule triggered: score differential {score_diff} >= {mercy_rule}. Waiting for goal replay to finish.")
+                        mercy_triggered = True
             except Exception as pkt_err:
                 # Packet might not be available yet, continue polling
                 pass

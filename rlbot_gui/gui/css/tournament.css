@@ -78,13 +78,14 @@
 
 /* Round Robin View */
 .round-robin-view {
-    flex: 1;
+    flex: 0 0;
     display: flex;
     flex-direction: column;
     background: rgba(255, 255, 255, 0.05);
     border-radius: 10px;
     padding: 20px;
-    overflow: hidden;
+    overflow: auto; /* Let the whole page scroll instead of scrolling internally */
+    min-height: 600px; /* Taller than the old default so more matches are visible */
 }
 
 .round-robin-header {
@@ -98,7 +99,7 @@
 
 .round-robin-matches {
     flex: 1;
-    overflow-y: auto;
+    overflow-y: auto; /* Page scrolls, not the panel */
     margin-bottom: 20px;
     padding-right: 10px;
 }
@@ -456,25 +457,28 @@
     gap: 10px;
 }
 
-/* Tournament Content */
+/* Tournament Content: single scrolling column so the stats panel below
+   the matches panel is never cut off — the whole page scrolls instead of
+   the individual panels scrolling internally. */
 .tournament-content {
     display: flex;
+    flex-direction: column;
     gap: 20px;
     flex: 1;
-    overflow-y: auto; /* Enable vertical scrolling for content that exceeds viewport */
+    overflow-y: auto; /* Whole-page scroll for content that exceeds viewport */
     overflow-x: hidden;
 }
 
 /* Bracket View */
 .bracket-view {
-    flex: 2;
+    flex: 0 0 auto;
     display: flex;
     flex-direction: column;
     background: rgba(255, 255, 255, 0.05);
     border-radius: 10px;
     padding: 20px;
     overflow: visible; /* Allow content to flow naturally */
-    min-height: 1000px; /* Increased height for better spacing with many participants */
+    min-height: 700px; /* Taller than the old default so more matches are visible */
 }
 
 .bracket-header {
@@ -1068,6 +1072,7 @@
     border-radius: 10px;
     padding: 15px;
     margin-top: 15px;
+    overflow: visible;
 }
 
 .stats-panel-header {
@@ -1810,16 +1815,14 @@
 
 /* Swiss View */
 .swiss-view {
-    flex: 1;
+    flex: 0 0;
     display: flex;
     flex-direction: column;
     background: rgba(255, 255, 255, 0.05);
     border-radius: 10px;
     padding: 20px;
-    overflow-y: auto;
-    overflow-x: hidden;
-    min-height: 500px;
-    align-self: stretch;
+    overflow: auto; /* Let the whole page scroll instead of scrolling internally */
+    min-height: 600px; /* Taller than the old default so more matches are visible */
 }
 
 .swiss-header {
@@ -1865,7 +1868,7 @@
 
 .swiss-matches {
     flex: 1;
-    overflow-y: auto;
+    overflow-y: auto; /* Page scrolls, not the panel */
     padding-right: 10px;
 }
 

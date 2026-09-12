@@ -366,8 +366,7 @@ export default {
                 scripts: [],  // Custom scripts (event scripts) loaded into every match
                 mercy_rule: 0,  // Goal lead that ends a match early (0 = disabled)
                 // Phase 4: Swiss format settings
-                swiss_rounds: 0,  // 0 = auto-calculate as ceil(log2(participants))
-                swiss_tiebreakers: ['score_differential', 'goals_scored', 'head_to_head']
+                swiss_rounds: 0  // 0 = auto-calculate as ceil(log2(participants))
             },
             scriptPool: [],  // Available scripts from eel.scan_for_scripts()
             currentMatch: null,
@@ -838,100 +837,6 @@ export default {
             
             return positions;
         },
-        standings() {
-            if (!this.tournamentState || this.tournamentState.format !== 'round_robin') return [];
-
-            const isTeamMode = (this.tournamentState.team_size > 1) &&
-                this.tournamentState.teams && this.tournamentState.teams.length > 0;
-
-            // Calculate standings from matches
-            const standings = {};
-
-            // Initialize standings keyed by the entity that fills the bracket slot:
-            // teams (team_id) in team mode, participants (participant_id) in 1v1.
-            if (isTeamMode) {
-                for (const t of this.tournamentState.teams) {
-                    standings[t.team_id] = {
-                        participant: t,
-                        played: 0,
-                        wins: 0,
-                        draws: 0,
-                        losses: 0,
-                        goals_for: 0,
-                        goals_against: 0,
-                        goal_difference: 0,
-                        points: 0
-                    };
-                }
-            } else {
-                for (const p of this.tournamentState.participants) {
-                    standings[p.participant_id] = {
-                        participant: p,
-                        played: 0,
-                        wins: 0,
-                        draws: 0,
-                        losses: 0,
-                        goals_for: 0,
-                        goals_against: 0,
-                        goal_difference: 0,
-                        points: 0
-                    };
-                }
-            }
-
-            // Process completed matches
-            for (const match of this.tournamentState.matches) {
-                if (!match.completed || !match.score) continue;
-                if (!match.participant1 || !match.participant2) continue;
-
-                const p1Id = match.participant1.participant_id;
-                const p2Id = match.participant2.participant_id;
-                if (!standings[p1Id] || !standings[p2Id]) continue;
-
-                const [score1, score2] = match.score;
-
-                // Update games played
-                standings[p1Id].played++;
-                standings[p2Id].played++;
-
-                // Update goals
-                standings[p1Id].goals_for += score1;
-                standings[p1Id].goals_against += score2;
-                standings[p2Id].goals_for += score2;
-                standings[p2Id].goals_against += score1;
-
-                // Determine winner/draw
-                if (score1 > score2) {
-                    standings[p1Id].wins++;
-                    standings[p1Id].points += 3;
-                    standings[p2Id].losses++;
-                } else if (score2 > score1) {
-                    standings[p2Id].wins++;
-                    standings[p2Id].points += 3;
-                    standings[p1Id].losses++;
-                } else {
-                    standings[p1Id].draws++;
-                    standings[p1Id].points += 1;
-                    standings[p2Id].draws++;
-                    standings[p2Id].points += 1;
-                }
-            }
-
-            // Calculate goal difference
-            for (const pId of Object.keys(standings)) {
-                standings[pId].goal_difference = standings[pId].goals_for - standings[pId].goals_against;
-            }
-
-            // Convert to array and sort
-            const result = Object.values(standings);
-            result.sort((a, b) => {
-                if (b.points !== a.points) return b.points - a.points;
-                if (b.goal_difference !== a.goal_difference) return b.goal_difference - a.goal_difference;
-                return b.goals_for - a.goals_for;
-            });
-
-            return result;
-        },
         // Phase 4: Swiss format — group matches by round for the Swiss view.
         swissRounds() {
             if (!this.tournamentState || this.tournamentState.format !== 'swiss') return [];
@@ -1310,9 +1215,6 @@ export default {
 
             // Phase 4: Swiss format parameters
             const isSwiss = this.newTournament.format === 'swiss';
-            const swissTiebreakersJson = isSwiss
-                ? JSON.stringify(this.newTournament.swiss_tiebreakers || [])
-                : '[]';
             const swissRounds = isSwiss ? (Number(this.newTournament.swiss_rounds) || 0) : 0;
 
             try {
@@ -1324,7 +1226,6 @@ export default {
                     JSON.stringify(this.newTournament.mutators),
                     teamSize,
                     allowDuplicates,
-                    swissTiebreakersJson,
                     swissRounds,
                     this.newTournament.map || '',
                     this.newTournament.game_mode || 'Soccer',
@@ -1344,7 +1245,7 @@ export default {
                 this.tournamentState = state;
                 console.log('[Tournament] After: tournamentState is', this.tournamentState ? 'set' : 'null');
                 this.selectedParticipants = [];
-                this.newTournament = { name: '', format: 'single_elimination', team_size: 1, allow_duplicates: false, human_count: 0, human_names: [], mutators: { ...DEFAULT_MUTATORS }, map: '', game_mode: 'Soccer', randomize_map: false, scripts: [], mercy_rule: 0, swiss_rounds: 0, swiss_tiebreakers: ['score_differential', 'goals_scored', 'head_to_head'] };
+                this.newTournament = { name: '', format: 'single_elimination', team_size: 1, allow_duplicates: false, human_count: 0, human_names: [], mutators: { ...DEFAULT_MUTATORS }, map: '', game_mode: 'Soccer', randomize_map: false, scripts: [], mercy_rule: 0, swiss_rounds: 0 };
                 this.selectedPreset = 'custom';
                 this.refreshTeamBalance();
                 this.refreshStats();
@@ -2673,22 +2574,6 @@ export default {
         // ------------------------------------------------------------------
         // Phase 4: Swiss format
         // ------------------------------------------------------------------
-        swissTiebreakerLabel(tb) {
-            const labels = {
-                'score_differential': 'Score differential (goals for - goals against)',
-                'goals_scored': 'Total goals scored',
-                'head_to_head': 'Head-to-head result'
-            };
-            return labels[tb] || tb;
-        },
-
-        moveSwissTiebreaker(from, to) {
-            const list = this.newTournament.swiss_tiebreakers;
-            if (to < 0 || to >= list.length) return;
-            const [item] = list.splice(from, 1);
-            list.splice(to, 0, item);
-        },
-
         async refreshSwissStandings() {
             if (!this.tournamentState || this.tournamentState.format !== 'swiss') {
                 this.swissStandings = null;

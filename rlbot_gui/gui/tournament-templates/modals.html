@@ -47,26 +47,6 @@
                 </small>
             </b-form-group>
 
-            <b-form-group label="Tiebreaker Priority" label-for="swiss-tiebreakers">
-                <p class="text-muted small mb-2">
-                    Applied in order when the top 2 participants are tied on wins after all rounds.
-                    If none can separate them, a head-to-head playoff match is scheduled.
-                </p>
-                <div class="swiss-tiebreaker-list">
-                    <div v-for="(tb, idx) in newTournament.swiss_tiebreakers" :key="tb" class="swiss-tiebreaker-row">
-                        <span class="swiss-tb-rank">{{ idx + 1 }}.</span>
-                        <span class="swiss-tb-name">{{ swissTiebreakerLabel(tb) }}</span>
-                        <span class="swiss-tb-arrows">
-                            <b-icon icon="arrow-up" font-scale="0.8" class="reorder-btn"
-                                    :class="{ 'disabled': idx === 0 }"
-                                    @click="moveSwissTiebreaker(idx, idx - 1)"></b-icon>
-                            <b-icon icon="arrow-down" font-scale="0.8" class="reorder-btn"
-                                    :class="{ 'disabled': idx === newTournament.swiss_tiebreakers.length - 1 }"
-                                    @click="moveSwissTiebreaker(idx, idx + 1)"></b-icon>
-                        </span>
-                    </div>
-                </div>
-            </b-form-group>
         </div>
 
         <b-form-group label="Team Size" label-for="tournament-team-size">

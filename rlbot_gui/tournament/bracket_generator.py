@@ -847,23 +847,29 @@ def generate_swiss_round1(participants: List[Participant]) -> List[Match]:
     return matches
 
 
-def _swiss_compute_records(
-    participants: List[Participant],
-    completed_matches: List[Match]
+def _compute_entity_records(
+    entities: List[Participant],
+    completed_matches: List[Match],
+    name_to_eid: Dict[str, str]
 ) -> Dict[str, Dict]:
     """
-    Compute per-participant records from completed matches.
-    Returns a dict keyed by participant_id with wins, losses, goals_for,
-    goals_against, goal_difference, played.
+    Compute per-entity records from completed matches.
+
+    Returns a dict keyed by entity id with wins, losses, draws, goals_for,
+    goals_against, goal_difference, score (aggregated from per-player stats),
+    played. name_to_eid maps a player name to the entity id that owns it
+    (used to attribute per-player score in team mode).
     """
     records = {}
-    for p in participants:
+    for p in entities:
         records[p.participant_id] = {
             'wins': 0,
             'losses': 0,
             'draws': 0,
             'goals_for': 0,
             'goals_against': 0,
+            'goal_difference': 0,
+            'score': 0,
             'played': 0
         }
 
@@ -895,67 +901,127 @@ def _swiss_compute_records(
             records[p1_id]['draws'] += 1
             records[p2_id]['draws'] += 1
 
+        # Aggregate per-player score onto the owning entity (last-resort tiebreak)
+        for ps in (m.player_stats or []):
+            eid = name_to_eid.get(ps.get('name'))
+            if eid in records:
+                records[eid]['score'] += int(ps.get('score', 0) or 0)
+
     for pid in records:
-        records[pid]['goal_difference'] = records[pid]['goals_for'] - records[pid]['goals_against']
+        r = records[pid]
+        r['goal_difference'] = r['goals_for'] - r['goals_against']
 
     return records
 
 
-def _swiss_sort_key(records: Dict[str, Dict], tiebreakers: List[str]):
+def _head_to_head_winner(
+    p1: Participant,
+    p2: Participant,
+    completed_matches: List[Match]
+) -> Optional[Participant]:
     """
-    Build a sort key function for Swiss standings.
-    Primary: wins (descending).
-    Then: user-selected tiebreakers in order.
-    Fallback: goal_difference, goals_for.
+    Return the winner of the head-to-head match between p1 and p2,
+    or None if they have not played each other or the match was a draw.
     """
+    for m in completed_matches:
+        if not m.completed or not m.score:
+            continue
+        if not m.participant1 or not m.participant2:
+            continue
+        ids = {m.participant1.participant_id, m.participant2.participant_id}
+        if p1.participant_id in ids and p2.participant_id in ids:
+            s1, s2 = m.score
+            if s1 > s2:
+                return m.participant1
+            elif s2 > s1:
+                return m.participant2
+            # Draw: no head-to-head winner
+            return None
+    return None
+
+
+def _sort_tied_group(
+    group: List[Participant],
+    records: Dict[str, Dict],
+    completed_matches: List[Match]
+) -> List[Participant]:
+    """
+    Order a group of entities that are tied on overall wins.
+
+    1. Head-to-head: wins in matches between members of the tied group.
+       This supports any group size (2-way or multi-way).
+    2. If head-to-head cannot separate them (e.g. cyclic results), fall
+       back to goal difference, then goals for, then score.
+    """
+    if len(group) <= 1:
+        return list(group)
+
+    group_ids = {p.participant_id for p in group}
+    h2h_wins: Dict[str, int] = {p.participant_id: 0 for p in group}
+    for m in completed_matches:
+        if not m.completed or m.winner is None:
+            continue
+        p1, p2 = m.participant1, m.participant2
+        if not p1 or not p2:
+            continue
+        if p1.participant_id in group_ids and p2.participant_id in group_ids:
+            h2h_wins[m.winner.participant_id] += 1
+
     def key(p: Participant):
-        r = records.get(p.participant_id, {})
-        wins = r.get('wins', 0)
-        gd = r.get('goal_difference', 0)
-        gf = r.get('goals_for', 0)
+        r = records[p.participant_id]
+        return (-h2h_wins[p.participant_id],
+                -r['goal_difference'],
+                -r['goals_for'],
+                -r['score'])
 
-        # Build tiebreaker tuple in user-specified order
-        tb_values = []
-        for tb in tiebreakers:
-            if tb == 'score_differential':
-                tb_values.append(-gd)
-            elif tb == 'goals_scored':
-                tb_values.append(-gf)
-            elif tb == 'head_to_head':
-                # Head-to-head is handled separately; use 0 as placeholder
-                tb_values.append(0)
-            else:
-                tb_values.append(0)
+    return sorted(group, key=key)
 
-        # Fallback tiebreakers
-        tb_values.append(-gd)
-        tb_values.append(-gf)
 
-        return (-wins,) + tuple(tb_values)
+def rank_entities(
+    entities: List[Participant],
+    completed_matches: List[Match],
+    name_to_eid: Dict[str, str]
+) -> Tuple[List[Participant], Dict[str, Dict]]:
+    """
+    Rank entities by wins (descending). Ties are broken by multi-way
+    head-to-head (wins among the tied group), then goal difference,
+    then goals for, then score.
 
-    return key
+    Returns:
+        Tuple of (ordered entity list, records dict keyed by entity id)
+    """
+    records = _compute_entity_records(entities, completed_matches, name_to_eid)
+
+    by_wins: Dict[int, List[Participant]] = {}
+    for e in entities:
+        by_wins.setdefault(records[e.participant_id]['wins'], []).append(e)
+
+    ordered: List[Participant] = []
+    for w in sorted(by_wins.keys(), reverse=True):
+        ordered.extend(_sort_tied_group(by_wins[w], records, completed_matches))
+    return ordered, records
 
 
 def generate_swiss_next_round(
     participants: List[Participant],
     completed_matches: List[Match],
     round_num: int,
-    tiebreakers: List[str]
+    name_to_eid: Dict[str, str]
 ) -> List[Match]:
     """
     Generate the next round of Swiss matches based on current records.
 
     Algorithm:
-    1. Compute records (wins, losses, goals) from completed matches.
-    2. Sort participants by wins (desc), then by user-selected tiebreakers.
-    3. Pair 1st with 2nd, 3rd with 4th, etc.
-    4. Avoid rematches when possible (swap with next available non-rematch opponent).
+    1. Rank participants by wins (desc), ties broken by multi-way
+       head-to-head, then goal difference, goals for, score.
+    2. Pair 1st with 2nd, 3rd with 4th, etc.
+    3. Avoid rematches when possible (swap with next available non-rematch opponent).
 
     Args:
         participants: All participants in the tournament.
         completed_matches: All completed matches so far.
         round_num: The round number to generate (2, 3, ...).
-        tiebreakers: Ordered list of tiebreaker keys.
+        name_to_eid: Maps player names to entity ids for score aggregation.
 
     Returns:
         List of Match objects for the new round.
@@ -963,9 +1029,7 @@ def generate_swiss_next_round(
     if len(participants) < 2:
         return []
 
-    records = _swiss_compute_records(participants, completed_matches)
-    sort_key = _swiss_sort_key(records, tiebreakers)
-    sorted_participants = sorted(participants, key=sort_key)
+    sorted_participants, _ = rank_entities(participants, completed_matches, name_to_eid)
 
     # Track previous opponents to avoid rematches
     previous_opponents: Dict[str, set] = {}
@@ -1014,19 +1078,18 @@ def generate_swiss_next_round(
 def calculate_swiss_standings(
     participants: List[Participant],
     completed_matches: List[Match],
-    tiebreakers: List[str]
+    name_to_eid: Dict[str, str]
 ) -> List[Dict]:
     """
-    Calculate Swiss standings with user-selectable tiebreakers.
+    Calculate Swiss standings ranked by wins, with ties broken by
+    multi-way head-to-head, then goal difference, goals for, and score.
 
     Returns:
-        List of standings dicts sorted by wins (desc), then tiebreakers.
-        Each dict has: participant, wins, losses, draws, goals_for,
-        goals_against, goal_difference, played, rank.
+        List of standings dicts sorted by rank. Each dict has: participant,
+        wins, losses, draws, goals_for, goals_against, goal_difference,
+        score, played, rank.
     """
-    records = _swiss_compute_records(participants, completed_matches)
-    sort_key = _swiss_sort_key(records, tiebreakers)
-    sorted_participants = sorted(participants, key=sort_key)
+    sorted_participants, records = rank_entities(participants, completed_matches, name_to_eid)
 
     standings = []
     for rank, p in enumerate(sorted_participants, 1):
@@ -1040,55 +1103,27 @@ def calculate_swiss_standings(
             'goals_for': r.get('goals_for', 0),
             'goals_against': r.get('goals_against', 0),
             'goal_difference': r.get('goal_difference', 0),
+            'score': r.get('score', 0),
             'played': r.get('played', 0)
         })
 
     return standings
 
 
-def _swiss_head_to_head(
-    p1: Participant,
-    p2: Participant,
-    completed_matches: List[Match]
-) -> Optional[Participant]:
-    """
-    Return the winner of the head-to-head match between p1 and p2,
-    or None if they have not played each other or the match was a draw.
-    """
-    for m in completed_matches:
-        if not m.completed or not m.score:
-            continue
-        if not m.participant1 or not m.participant2:
-            continue
-        ids = {m.participant1.participant_id, m.participant2.participant_id}
-        if p1.participant_id in ids and p2.participant_id in ids:
-            s1, s2 = m.score
-            if s1 > s2:
-                return m.participant1
-            elif s2 > s1:
-                return m.participant2
-            # Draw: no head-to-head winner
-            return None
-    return None
-
-
 def determine_swiss_winner(
     participants: List[Participant],
     completed_matches: List[Match],
-    tiebreakers: List[str]
+    name_to_eid: Dict[str, str]
 ) -> Dict:
     """
     Determine the Swiss tournament winner.
 
     Winner determination:
     1. Most wins after all rounds.
-    2. If the top 2 are tied on wins, apply the user-selected tiebreakers
-       in priority order to separate them:
-         - score_differential: higher goal difference wins
-         - goals_scored: higher total goals wins
-         - head_to_head: winner of their direct match wins
-    3. If the tiebreakers cannot separate the top 2, a head-to-head
-       playoff match is required.
+    2. Ties are broken by multi-way head-to-head (wins among the tied
+       group), then goal difference, then goals for, then score.
+    3. If the top 2 remain completely indistinguishable after all
+       tiebreakers, a playoff match is required.
 
     Returns:
         Dict with:
@@ -1097,7 +1132,7 @@ def determine_swiss_winner(
           - 'playoff_participants': [p1, p2] if playoff needed
           - 'standings': full standings list
     """
-    standings = calculate_swiss_standings(participants, completed_matches, tiebreakers)
+    standings = calculate_swiss_standings(participants, completed_matches, name_to_eid)
 
     if len(standings) < 2:
         return {
@@ -1119,124 +1154,35 @@ def determine_swiss_winner(
             'standings': standings
         }
 
-    # Top 2 are tied on wins. Apply tiebreakers in user-specified order.
+    # Top 2 are tied on wins. Head-to-head between them decides it...
     p1 = top['participant']
     p2 = second['participant']
+    h2h = _head_to_head_winner(p1, p2, completed_matches)
+    if h2h is not None:
+        return {
+            'winner': h2h,
+            'playoff_needed': False,
+            'playoff_participants': [],
+            'standings': standings
+        }
 
-    for tb in tiebreakers:
-        if tb == 'score_differential':
-            if top['goal_difference'] != second['goal_difference']:
-                winner = p1 if top['goal_difference'] > second['goal_difference'] else p2
-                return {
-                    'winner': winner,
-                    'playoff_needed': False,
-                    'playoff_participants': [],
-                    'standings': standings
-                }
-        elif tb == 'goals_scored':
-            if top['goals_for'] != second['goals_for']:
-                winner = p1 if top['goals_for'] > second['goals_for'] else p2
-                return {
-                    'winner': winner,
-                    'playoff_needed': False,
-                    'playoff_participants': [],
-                    'standings': standings
-                }
-        elif tb == 'head_to_head':
-            h2h = _swiss_head_to_head(p1, p2, completed_matches)
-            if h2h is not None:
-                return {
-                    'winner': h2h,
-                    'playoff_needed': False,
-                    'playoff_participants': [],
-                    'standings': standings
-                }
+    # ...otherwise fall back to goal difference, goals for, score.
+    # rank_entities already ordered them by that chain, so if ANY of those
+    # stats differ, the top-ranked one wins.
+    if (top['goal_difference'] != second['goal_difference']
+            or top['goals_for'] != second['goals_for']
+            or top['score'] != second['score']):
+        return {
+            'winner': top['participant'],
+            'playoff_needed': False,
+            'playoff_participants': [],
+            'standings': standings
+        }
 
-    # Tiebreakers could not separate the top 2. A playoff is required.
+    # Completely indistinguishable. A playoff is required.
     return {
         'winner': None,
         'playoff_needed': True,
         'playoff_participants': [p1, p2],
         'standings': standings
     }
-
-
-def calculate_round_robin_standings(matches: List[Match], participants: List[Participant]) -> List[Dict]:
-    """
-    Calculate standings for a round robin tournament.
-    
-    Scoring:
-    - Win: 3 points
-    - Draw: 1 point
-    - Loss: 0 points
-    
-    Returns:
-        List of standings sorted by points (descending), then goal difference, then goals scored
-    """
-    standings = {}
-    
-    # Initialize standings for all participants
-    for p in participants:
-        standings[p.participant_id] = {
-            'participant': p,
-            'played': 0,
-            'wins': 0,
-            'draws': 0,
-            'losses': 0,
-            'goals_for': 0,
-            'goals_against': 0,
-            'goal_difference': 0,
-            'points': 0
-        }
-    
-    # Process completed matches
-    for match in matches:
-        if not match.completed or match.score is None:
-            continue
-        
-        if match.participant1 is None or match.participant2 is None:
-            continue
-        
-        p1_id = match.participant1.participant_id
-        p2_id = match.participant2.participant_id
-        score1, score2 = match.score
-        
-        # Update games played
-        standings[p1_id]['played'] += 1
-        standings[p2_id]['played'] += 1
-        
-        # Update goals
-        standings[p1_id]['goals_for'] += score1
-        standings[p1_id]['goals_against'] += score2
-        standings[p2_id]['goals_for'] += score2
-        standings[p2_id]['goals_against'] += score1
-        
-        # Determine winner/draw
-        if score1 > score2:
-            # Player 1 wins
-            standings[p1_id]['wins'] += 1
-            standings[p1_id]['points'] += 3
-            standings[p2_id]['losses'] += 1
-        elif score2 > score1:
-            # Player 2 wins
-            standings[p2_id]['wins'] += 1
-            standings[p2_id]['points'] += 3
-            standings[p1_id]['losses'] += 1
-        else:
-            # Draw
-            standings[p1_id]['draws'] += 1
-            standings[p1_id]['points'] += 1
-            standings[p2_id]['draws'] += 1
-            standings[p2_id]['points'] += 1
-    
-    # Calculate goal difference
-    for p_id in standings:
-        standings[p_id]['goal_difference'] = (
-            standings[p_id]['goals_for'] - standings[p_id]['goals_against']
-        )
-    
-    # Convert to list and sort
-    result = list(standings.values())
-    result.sort(key=lambda x: (x['points'], x['goal_difference'], x['goals_for']), reverse=True)
-    
-    return result

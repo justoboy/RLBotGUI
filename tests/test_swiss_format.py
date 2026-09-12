@@ -9,7 +9,7 @@ Covers:
   - Round count calculation (ceil(log2(n)))
   - Round 1 seeded pairing
   - Next-round matching (similar records, rematch avoidance)
-  - Tiebreaker ranking (score differential, goals scored, head-to-head)
+  - Ranking by wins with multi-way head-to-head tiebreakers
   - Playoff determination when the top 2 are tied
   - Team-based (stand-in) Swiss generation
   - A full end-to-end Swiss tournament flow
@@ -28,7 +28,7 @@ from rlbot_gui.tournament.bracket_generator import (
     generate_swiss_next_round,
     calculate_swiss_standings,
     determine_swiss_winner,
-    _swiss_compute_records,
+    _compute_entity_records,
 )
 
 PASS = 0
@@ -55,6 +55,10 @@ def make_participants(n, prefix="P"):
         )
         for i in range(n)
     ]
+
+
+def name_to_eid(participants):
+    return {p.name: p.participant_id for p in participants}
 
 
 def make_completed_match(p1, p2, s1, s2):
@@ -121,8 +125,7 @@ def test_next_round_matching():
         make_completed_match(p1, p2, 3, 1),
         make_completed_match(p3, p4, 2, 0),
     ]
-    tiebreakers = ['score_differential', 'goals_scored', 'head_to_head']
-    matches = generate_swiss_next_round(parts, completed, 2, tiebreakers)
+    matches = generate_swiss_next_round(parts, completed, 2, name_to_eid(parts))
     check("Round 2 has 2 matches", len(matches) == 2, f"(got {len(matches)})")
     check("All round 2 matches are round_num=2", all(m.round_num == 2 for m in matches))
 
@@ -149,21 +152,20 @@ def test_rematch_avoidance_fallback():
     parts = make_participants(2)
     p1, p2 = parts
     completed = [make_completed_match(p1, p2, 3, 1)]
-    matches = generate_swiss_next_round(parts, completed, 2, ['score_differential'])
+    matches = generate_swiss_next_round(parts, completed, 2, name_to_eid(parts))
     check("2 participants round 2 still produces 1 match", len(matches) == 1, f"(got {len(matches)})")
     if matches:
         pair = frozenset([matches[0].participant1.participant_id, matches[0].participant2.participant_id])
         check("Fallback allows rematch when no alternative", pair == frozenset(['p1', 'p2']), f"(got {pair})")
 
 
-def test_tiebreaker_ranking():
-    print("\n[5] Tiebreaker ranking")
+def test_wins_ranking():
+    print("\n[5] Ranking by wins, ties broken by head-to-head")
     parts = make_participants(4)
     p1, p2, p3, p4 = parts
 
-    # All four have 1 win and 1 loss after 2 rounds.
-    # Differentiate by goal differential and goals scored.
-    # p1: +5 GD, 10 GF ; p2: +3 GD, 8 GF ; p3: +1 GD, 6 GF ; p4: -1 GD, 4 GF
+    # p1 has 2 wins; p2 and p3 have 1 win each; p4 has 0 wins.
+    # p2 beat p3 head-to-head, so p2 ranks above p3.
     completed = [
         make_completed_match(p1, p4, 5, 0),   # p1 wins 5-0
         make_completed_match(p2, p3, 4, 1),   # p2 wins 4-1
@@ -171,33 +173,30 @@ def test_tiebreaker_ranking():
         make_completed_match(p3, p4, 3, 1),   # p3 wins 3-1
     ]
     # Recompute records to verify.
-    records = _swiss_compute_records(parts, completed)
+    records = _compute_entity_records(parts, completed, name_to_eid(parts))
     # p1: wins vs p4 (5-0) and vs p2 (5-2) => 2 wins. p2: 1 win (vs p3), 1 loss (vs p1).
     # p3: 1 win (vs p4), 1 loss (vs p2). p4: 2 losses.
-    # So p1 has 2 wins, others 1 win each.
-    standings = calculate_swiss_standings(parts, completed, ['score_differential', 'goals_scored', 'head_to_head'])
+    check("p1 has 2 wins", records['p1']['wins'] == 2, f"(got {records['p1']})")
+    check("p2 has 1 win", records['p2']['wins'] == 1, f"(got {records['p2']})")
+
+    standings = calculate_swiss_standings(parts, completed, name_to_eid(parts))
     check("p1 ranked #1 (2 wins)", standings[0]['participant'].participant_id == 'p1',
           f"(got {standings[0]['participant'].participant_id})")
-    # Among p2, p3, p4 (all 1 win): p2 has higher GD than p3 than p4.
-    check("p2 ranked #2 (best GD among 1-win group)", standings[1]['participant'].participant_id == 'p2',
+    # Among p2, p3 (both 1 win): p2 beat p3 head-to-head, so p2 ranks above p3.
+    check("p2 ranked #2 (beat p3 head-to-head)", standings[1]['participant'].participant_id == 'p2',
           f"(got {standings[1]['participant'].participant_id})")
     check("p3 ranked #3", standings[2]['participant'].participant_id == 'p3',
           f"(got {standings[2]['participant'].participant_id})")
-    check("p4 ranked #4", standings[3]['participant'].participant_id == 'p4',
+    check("p4 ranked #4 (0 wins)", standings[3]['participant'].participant_id == 'p4',
           f"(got {standings[3]['participant'].participant_id})")
-
-    # Verify tiebreaker order matters: with only 'goals_scored', ranking among
-    # the 1-win group should still follow goals scored (p2 > p3 > p4 here).
-    standings_gf = calculate_swiss_standings(parts, completed, ['goals_scored'])
-    check("goals_scored tiebreaker: p1 still #1", standings_gf[0]['participant'].participant_id == 'p1')
 
 
 def test_head_to_head_tiebreaker():
-    print("\n[6] Head-to-head tiebreaker")
+    print("\n[6] Head-to-head tiebreaker (playoff when indistinguishable)")
     parts = make_participants(4)
     p1, p2, p3, p4 = parts
 
-    # p1 and p2 both have 1 win, 1 loss, identical GD and GF.
+    # All four have 1 win, 1 loss, identical GD and GF.
     # p1 beat p3, lost to p4. p2 beat p4, lost to p3.
     # p1 vs p2 have not played each other -> head-to-head cannot separate.
     completed = [
@@ -206,7 +205,7 @@ def test_head_to_head_tiebreaker():
         make_completed_match(p2, p4, 3, 1),   # p2 wins
         make_completed_match(p3, p2, 2, 1),   # p3 wins
     ]
-    records = _swiss_compute_records(parts, completed)
+    records = _compute_entity_records(parts, completed, name_to_eid(parts))
     # p1: 1W 1L, GF 3+1=4, GA 1+2=3, GD +1
     # p2: 1W 1L, GF 3+1=4, GA 1+2=3, GD +1
     # p3: 1W 1L, GF 1+2=3, GA 3+1=4, GD -1
@@ -215,9 +214,9 @@ def test_head_to_head_tiebreaker():
           records['p1'] == records['p2'],
           f"(p1={records['p1']}, p2={records['p2']})")
 
-    # With head_to_head as the deciding tiebreaker and p1/p2 not having played,
-    # a playoff should be required.
-    result = determine_swiss_winner(parts, completed, ['score_differential', 'goals_scored', 'head_to_head'])
+    # p1 and p2 have not played each other and have identical stats,
+    # so a playoff should be required.
+    result = determine_swiss_winner(parts, completed, name_to_eid(parts))
     check("Playoff needed when top 2 tied and H2H unavailable",
           result['playoff_needed'] is True, f"(got {result})")
     check("Playoff participants are p1 and p2",
@@ -230,47 +229,24 @@ def test_head_to_head_decides():
     parts = make_participants(4)
     p1, p2, p3, p4 = parts
 
-    # p1 and p2 both 1W 1L, identical GD/GF, but they HAVE played each other.
-    # p1 beat p2 head-to-head.
+    # p1, p2, p3 all have 2 wins (cycle: p1>p2>p3>p1), p4 has 0 wins.
+    # p1 and p2 have identical GD/GF, but p1 beat p2 head-to-head.
     completed = [
         make_completed_match(p1, p2, 3, 1),   # p1 beats p2 (H2H)
-        make_completed_match(p3, p4, 2, 0),   # p3 wins
-        make_completed_match(p1, p3, 2, 1),   # p1 wins
-        make_completed_match(p2, p4, 3, 2),   # p2 wins
-    ]
-    records = _swiss_compute_records(parts, completed)
-    # p1: 2W 1L ; p2: 1W 2L -> not tied, p1 wins outright.
-    # Let's craft a true tie instead:
-    completed2 = [
-        make_completed_match(p1, p2, 3, 1),   # p1 beats p2 (H2H)
-        make_completed_match(p1, p3, 2, 1),   # p1 wins
-        make_completed_match(p2, p4, 3, 1),   # p2 wins
-        make_completed_match(p3, p4, 2, 1),   # p3 wins
-    ]
-    records2 = _swiss_compute_records(parts, completed2)
-    # p1: 2W 1L ; p2: 1W 2L. Not a tie. Use a symmetric setup:
-    # p1 beats p2, p2 beats p3, p3 beats p1 (cycle) + p4 loses to all.
-    completed3 = [
-        make_completed_match(p1, p2, 3, 1),   # p1 beats p2
         make_completed_match(p2, p3, 3, 1),   # p2 beats p3
         make_completed_match(p3, p1, 3, 1),   # p3 beats p1
         make_completed_match(p1, p4, 3, 0),   # p1 beats p4
         make_completed_match(p2, p4, 3, 0),   # p2 beats p4
         make_completed_match(p3, p4, 3, 0),   # p3 beats p4
     ]
-    records3 = _swiss_compute_records(parts, completed3)
-    # p1: 2W 1L, GF 3+3+3=9, GA 1+1+0=2, GD +7
-    # p2: 2W 1L, GF 3+3+3=9, GA 1+1+0=2, GD +7
-    # p3: 2W 1L, GF 3+3+3=9, GA 1+1+0=2, GD +7
-    # p4: 0W 3L
-    # p1, p2, p3 all tied on wins/GD/GF. H2H cycle: p1>p2>p3>p1.
-    # Top 2 are p1 and p2 (order depends on sort stability). p1 beat p2 H2H.
-    result = determine_swiss_winner(parts, completed3, ['score_differential', 'goals_scored', 'head_to_head'])
-    # The top 2 should be two of {p1,p2,p3}. If they are p1 and p2, H2H gives p1.
-    top2 = set(result['standings'][0]['participant'].participant_id for _ in [0])
+    result = determine_swiss_winner(parts, completed, name_to_eid(parts))
+    # Top 2 are p1 and p2 (both 2 wins, equal GD/GF). p1 beat p2 H2H.
     check("A winner is determined (no playoff) when H2H separates top 2",
           result['playoff_needed'] is False and result['winner'] is not None,
           f"(got {result['playoff_needed']}, winner={result['winner']})")
+    check("p1 wins via head-to-head",
+          result['winner'] is not None and result['winner'].participant_id == 'p1',
+          f"(got {result['winner']})")
 
 
 def test_team_based_swiss():
@@ -299,7 +275,8 @@ def test_team_based_swiss():
         make_completed_match(stand_ins[0], stand_ins[1], 4, 2),
         make_completed_match(stand_ins[2], stand_ins[3], 3, 1),
     ]
-    matches2 = generate_swiss_next_round(stand_ins, completed, 2, ['score_differential'])
+    n2e = {t.name: t.team_id for t in teams}
+    matches2 = generate_swiss_next_round(stand_ins, completed, 2, n2e)
     check("4 teams -> 2 round-2 matches", len(matches2) == 2, f"(got {len(matches2)})")
 
 
@@ -307,7 +284,7 @@ def test_full_swiss_flow():
     print("\n[9] Full Swiss tournament flow (4 participants, 2 rounds)")
     parts = make_participants(4)
     p1, p2, p3, p4 = parts
-    tiebreakers = ['score_differential', 'goals_scored', 'head_to_head']
+    n2e = name_to_eid(parts)
 
     # Round 1
     round1 = generate_swiss_round1(parts)
@@ -320,7 +297,7 @@ def test_full_swiss_flow():
     ]
 
     # Round 2
-    round2 = generate_swiss_next_round(parts, completed, 2, tiebreakers)
+    round2 = generate_swiss_next_round(parts, completed, 2, n2e)
     check("Round 2 generated", len(round2) == 2)
 
     # Record round 2 results. p1 (1W) vs p3 (1W): p1 wins. p2 (0W) vs p4 (0W): p4 wins.
@@ -337,11 +314,11 @@ def test_full_swiss_flow():
             m.winner = m.participant1 if m.participant1.participant_id == 'p4' else m.participant2
 
     all_completed = completed + round2
-    records = _swiss_compute_records(parts, all_completed)
+    records = _compute_entity_records(parts, all_completed, n2e)
     # p1: 2W ; p3: 1W 1L ; p4: 1W 1L ; p2: 0W 2L
     check("p1 has 2 wins", records['p1']['wins'] == 2, f"(got {records['p1']})")
 
-    result = determine_swiss_winner(parts, all_completed, tiebreakers)
+    result = determine_swiss_winner(parts, all_completed, n2e)
     check("p1 is the winner (2 wins, no tie)",
           result['winner'] is not None and result['winner'].participant_id == 'p1',
           f"(got {result['winner']})")
@@ -357,7 +334,7 @@ def main():
     test_round1_pairing()
     test_next_round_matching()
     test_rematch_avoidance_fallback()
-    test_tiebreaker_ranking()
+    test_wins_ranking()
     test_head_to_head_tiebreaker()
     test_head_to_head_decides()
     test_team_based_swiss()

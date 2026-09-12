@@ -43,10 +43,9 @@ class Team:
     participants: List[Participant] = field(default_factory=list)
     wins: int = 0
     losses: int = 0
-    points: int = 0  # For round robin
-    # Swiss format tiebreaker tracking
-    goals_for: int = 0  # Total goals scored (Swiss tiebreaker)
-    goals_against: int = 0  # Total goals conceded (Swiss tiebreaker)
+    # Goal stats (used as tiebreakers in round robin / swiss)
+    goals_for: int = 0  # Total goals scored
+    goals_against: int = 0  # Total goals conceded
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -55,7 +54,6 @@ class Team:
             'participants': [p.to_dict() for p in self.participants],
             'wins': self.wins,
             'losses': self.losses,
-            'points': self.points,
             'goals_for': self.goals_for,
             'goals_against': self.goals_against
         }
@@ -67,7 +65,6 @@ class Team:
             name=data.get('name', ''),
             wins=data.get('wins', 0),
             losses=data.get('losses', 0),
-            points=data.get('points', 0),
             goals_for=data.get('goals_for', 0),
             goals_against=data.get('goals_against', 0)
         )
@@ -170,7 +167,6 @@ class TournamentState:
     allow_duplicates: bool = False  # When True, each team member is a copy of one participant
     # Phase 4: Swiss format fields
     swiss_rounds: int = 0  # Number of Swiss rounds (0 = not Swiss)
-    swiss_tiebreakers: List[str] = field(default_factory=list)  # Ordered tiebreaker keys
     swiss_playoff_scheduled: bool = False  # Whether a playoff match has been scheduled
     # Phase 4: Tournament map selection
     map: Optional[str] = None  # Selected map ID (e.g., 'DFHStadium', 'BeckwithPark')
@@ -205,7 +201,6 @@ class TournamentState:
             'winner_team': self.winner_team.to_dict() if self.winner_team else None,
             'allow_duplicates': self.allow_duplicates,
             'swiss_rounds': self.swiss_rounds,
-            'swiss_tiebreakers': self.swiss_tiebreakers,
             'swiss_playoff_scheduled': self.swiss_playoff_scheduled,
             'map': self.map,
             'game_mode': self.game_mode,
@@ -227,7 +222,6 @@ class TournamentState:
             team_size=data.get('team_size', 1),
             allow_duplicates=data.get('allow_duplicates', False),
             swiss_rounds=data.get('swiss_rounds', 0),
-            swiss_tiebreakers=data.get('swiss_tiebreakers', []),
             swiss_playoff_scheduled=data.get('swiss_playoff_scheduled', False),
             map=data.get('map'),
             game_mode=data.get('game_mode', 'Soccer'),

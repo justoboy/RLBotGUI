@@ -20,10 +20,10 @@
         </span>
     </div>
 
-    <!-- Tiebreaker hint (standings live in the shared Tournament Statistics panel) -->
-    <div class="swiss-tiebreaker-hint text-muted small mt-2" v-if="swissStandings && swissStandings.tiebreakers">
+    <!-- Ranking hint (standings live in the shared Tournament Statistics panel) -->
+    <div class="swiss-tiebreaker-hint text-muted small mt-2">
         <b-icon icon="info-circle" font-scale="0.8"></b-icon>
-        Tiebreakers: {{ swissStandings.tiebreakers.map(swissTiebreakerLabel).join(' → ') }}
+        Ranking: Wins → Head-to-head → Goal difference → Goals scored → Score
     </div>
 
     <!-- Matches by round -->

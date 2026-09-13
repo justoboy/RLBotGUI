@@ -256,7 +256,9 @@ def tournament_new(name: str, tournament_format: str, participants_json: str, ma
             for the tournament's game mode instead of using the fixed map.
         mercy_rule: Goal differential that ends a match early (0 = disabled).
             When one team leads by this many goals, the match ends immediately
-            and the score/stats up to that point are kept.
+            and the score/stats up to that point are kept. If "Enable State
+            Setting" is off in the main GUI, the match cannot be ended in-game,
+            so the game process is shut down instead once the threshold is hit.
     
     Returns:
         JSON string of tournament state
@@ -1530,9 +1532,16 @@ def _handle_swiss_progression(completed_match: Match) -> None:
 
     if completed_match.round_num < CURRENT_TOURNAMENT.swiss_rounds:
         # Generate the next round based on current records.
+        next_round = completed_match.round_num + 1
+        # Guard against double-generation: if matches for the next round
+        # already exist (e.g. progression fired more than once), do not
+        # generate a duplicate set.
+        if any(m.round_num == next_round for m in CURRENT_TOURNAMENT.matches):
+            print(f"WARNING: Swiss round {next_round} already exists; "
+                  f"skipping duplicate generation")
+            return
         entities = _swiss_get_entities()
         completed = [m for m in CURRENT_TOURNAMENT.matches if m.completed]
-        next_round = completed_match.round_num + 1
         new_matches = generate_swiss_next_round(
             entities, completed, next_round, _swiss_name_to_eid()
         )

@@ -136,6 +136,8 @@
             <small class="text-muted">
                 If enabled, a match ends early when one team leads by this many goals.
                 The score and stats up to that point are kept.
+                <span class="text-warning">Note:</span> if "Enable State Setting" is disabled in the main
+                GUI, the game process is shut down to end the match instead of ending it in-game.
             </small>
         </b-form-group>
 
@@ -586,7 +588,6 @@
                 <li><b>Game Mode:</b> {{ currentMatchSettings.game_mode || 'Soccer' }}</li>
                 <li v-if="tournamentState && tournamentState.randomize_map"><b>Map:</b> Randomized per match</li>
                 <li v-else><b>Map:</b> {{ currentMatchSettings.map || 'Default' }}</li>
-                <li><b>Mercy Rule:</b> {{ (tournamentState && tournamentState.mercy_rule) ? (tournamentState.mercy_rule + ' goal lead') : 'None' }}</li>
                 <li><b>Mercy Rule:</b> {{ (tournamentState && tournamentState.mercy_rule) ? (tournamentState.mercy_rule + ' goal lead') : 'None' }}</li>
                 <li><b>Match Length:</b> {{ currentMatchSettings.mutators?.match_length || '5 Minutes' }}</li>
                 <li><b>Max Score:</b> {{ currentMatchSettings.mutators?.max_score || '5 Goals' }}</li>

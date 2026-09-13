@@ -209,11 +209,10 @@ def start_match_helper(bot_list: List[dict], match_settings: dict, launcher_pref
     match_config.instant_start = match_settings['instant_start']
     match_config.enable_lockstep = match_settings['enable_lockstep']
     match_config.enable_rendering = match_settings['enable_rendering']
-    # The mercy rule needs state setting enabled so we can force the match to
-    # end in-game when the goal differential threshold is reached.
-    mercy_rule = int(match_settings.get('mercy_rule', 0) or 0)
-    enable_state_setting = match_settings['enable_state_setting'] or mercy_rule > 0
-    match_config.enable_state_setting = enable_state_setting
+    # enable_state_setting only gates whether *bots* are allowed to edit game
+    # state. When it is disabled, the mercy rule falls back to shutting down the
+    # game process instead of using set_game_state(end_match=True).
+    match_config.enable_state_setting = match_settings['enable_state_setting']
     match_config.auto_save_replay = match_settings['auto_save_replay']
     match_config.existing_match_behavior = match_settings['match_behavior']
     match_config.mutators = MutatorConfig()
@@ -260,12 +259,44 @@ def start_match_helper(bot_list: List[dict], match_settings: dict, launcher_pref
     # Poll for match end and collect final results
     try:
         from rlbot.utils.structures.game_data_struct import GameTickPacket
-        import time
         final_packet = None
         # Mercy rule: end the match early when a team leads by this many goals
         # (0 = disabled). Score/stats up to that point are kept as-is.
         mercy_rule = int(match_settings.get('mercy_rule', 0) or 0)
         mercy_triggered = False
+        # When a human is in the match, the game uses 'Continue And Spawn' so the
+        # Rocket Plugin LAN server hosting the humans is NOT restarted. The packet's
+        # team score can still carry the PREVIOUS match's final score (e.g. [0, 3])
+        # even though the in-game scoreboard shows 0-0, which made the mercy rule
+        # fire instantly on the stale score. Worse, the stale team score can then
+        # drop to the real fresh score (e.g. [0, 3] -> [0, 1] after the first goal),
+        # so a delta on the *team* score would go negative and be useless. Instead,
+        # baseline the per-player stats on the first packet and evaluate everything
+        # as a delta from that baseline: if the game resets per-player stats per
+        # match the baseline is 0, and if it carries them over the delta cancels
+        # the stale value out. Either way the delta only counts goals scored in
+        # THIS match, so a stale scoreboard can never trigger the mercy rule.
+        baseline_player_stats = None
+        # When state setting is enabled we can end the match in-game with
+        # set_game_state(end_match=True). When it is disabled (bots are locked
+        # out of state editing), the mercy rule instead shuts down the game
+        # process as soon as the threshold is reached.
+        state_setting_enabled = bool(match_settings['enable_state_setting'])
+
+        def goal_totals_by_team(pkt, baseline):
+            # Goals scored per team during THIS match, derived from per-player
+            # goal deltas. The game's 'goals' stat already includes own goals
+            # in the scoring team's count, so no separate own_goals handling.
+            # Keyed by car index (stable within a match) so duplicate player
+            # names cannot collide in the baseline.
+            totals = {0: 0, 1: 0}
+            for i in range(pkt.num_cars):
+                car = pkt.game_cars[i]
+                base = baseline.get(i, {})
+                goals = int(car.score_info.goals) - int(base.get('goals', 0))
+                totals[int(car.team)] += goals
+            return totals
+
         while True:
             # Check if shutdown was requested - exit immediately if so
             if shutdown_requested:
@@ -277,59 +308,94 @@ def start_match_helper(bot_list: List[dict], match_settings: dict, launcher_pref
                 packet = GameTickPacket()
                 # Use a shorter timeout (100ms) and check shutdown_requested more frequently
                 sm.game_interface.fresh_live_data_packet(packet, 100, 0)
+                if baseline_player_stats is None:
+                    baseline_player_stats = {}
+                    for i in range(packet.num_cars):
+                        car = packet.game_cars[i]
+                        baseline_player_stats[i] = {
+                            'score': int(car.score_info.score),
+                            'goals': int(car.score_info.goals),
+                            'own_goals': int(car.score_info.own_goals),
+                            'assists': int(car.score_info.assists),
+                            'saves': int(car.score_info.saves),
+                            'shots': int(car.score_info.shots),
+                            'demolitions': int(car.score_info.demolitions),
+                        }
+                goal_delta = goal_totals_by_team(packet, baseline_player_stats)
                 if packet.game_info.is_match_ended:
                     final_packet = packet
                     break
-                # If mercy rule was triggered, wait for kickoff pause (goal replay finished) then end the match.
-                if mercy_triggered and packet.game_info.is_kickoff_pause:
-                    print(f"Mercy rule: kickoff pause detected, ending match.")
-                    sm.game_interface.set_game_state(
-                        GameState(game_info=GameInfoState(end_match=True)))
-                    final_packet = packet
-                    break
-                # Mercy rule: if a team's lead reaches the threshold, mark it and wait for goal replay to finish.
-                if mercy_rule > 0 and packet.num_teams >= 2:
-                    score_diff = abs(packet.teams[0].score - packet.teams[1].score)
+                # Mercy rule: if a team's lead in goals scored THIS match reaches
+                # the threshold, mark it.
+                if mercy_rule > 0 and not mercy_triggered:
+                    score_diff = abs(goal_delta[0] - goal_delta[1])
                     if score_diff >= mercy_rule:
-                        print(f"Mercy rule triggered: score differential {score_diff} >= {mercy_rule}. Waiting for goal replay to finish.")
+                        print(f"Mercy rule triggered: goals this match {goal_delta[0]}-{goal_delta[1]} "
+                              f"(diff {score_diff} >= {mercy_rule}).")
                         mercy_triggered = True
+                if mercy_triggered:
+                    if state_setting_enabled:
+                        # Wait for kickoff pause (goal replay finished) then end the match in-game.
+                        if packet.game_info.is_kickoff_pause:
+                            print("Mercy rule: kickoff pause detected, ending match via state setting.")
+                            sm.game_interface.set_game_state(
+                                GameState(game_info=GameInfoState(end_match=True)))
+                            final_packet = packet
+                            break
+                    else:
+                        # State setting is disabled, so we cannot end the match
+                        # in-game; capture the current scores as final and shut
+                        # down the game process instead.
+                        print("Mercy rule: state setting disabled, shutting down game to end match.")
+                        final_packet = packet
+                        break
             except Exception as pkt_err:
                 # Packet might not be available yet, continue polling
                 pass
             
             if not sm.has_started:
                 break
-                
+            
             # CRITICAL: Use eel.sleep() instead of time.sleep() to allow eel requests
             # (like shut_down_match) to be processed during polling. time.sleep() blocks
             # the entire thread including eel's request handler.
             eel.sleep(0.05)  # Check every 50ms and yield to eel event loop
         
+        # Mercy rule fallback: state setting disabled, so the only way to end
+        # the match early is to kill the game process.
+        if mercy_triggered and not state_setting_enabled:
+            try:
+                sm.shut_down(time_limit=5, kill_all_pids=True)
+            except Exception as shutdown_err:
+                print(f"Error shutting down game for mercy rule: {shutdown_err}")
+        
         # Return final packet data if available
         if final_packet is not None:
-            # Extract team scores from the final packet
-            team_scores = []
-            for i in range(final_packet.num_teams):
-                team = final_packet.teams[i]
-                team_scores.append({
-                    'team_index': team.team_index,
-                    'score': team.score
-                })
-            # Extract per-player stats from the final packet (Phase 4: match history)
+            # Compute THIS match's score from per-player goal deltas so a stale
+            # scoreboard carried over via 'Continue And Spawn' cannot pollute
+            # the recorded result.
+            final_goal_delta = goal_totals_by_team(final_packet, baseline_player_stats)
+            team_scores = [
+                {'team_index': 0, 'score': final_goal_delta[0]},
+                {'team_index': 1, 'score': final_goal_delta[1]},
+            ]
+            # Extract per-player stats from the final packet (Phase 4: match
+            # history), as deltas from the baseline captured at match start.
             players = []
             for i in range(final_packet.num_cars):
                 car = final_packet.game_cars[i]
+                base = (baseline_player_stats or {}).get(i, {})
                 players.append({
                     'name': car.name,
                     'team': int(car.team),
                     'is_bot': bool(car.is_bot),
-                    'score': int(car.score_info.score),
-                    'goals': int(car.score_info.goals),
-                    'own_goals': int(car.score_info.own_goals),
-                    'assists': int(car.score_info.assists),
-                    'saves': int(car.score_info.saves),
-                    'shots': int(car.score_info.shots),
-                    'demolitions': int(car.score_info.demolitions)
+                    'score': int(car.score_info.score) - int(base.get('score', 0)),
+                    'goals': int(car.score_info.goals) - int(base.get('goals', 0)),
+                    'own_goals': int(car.score_info.own_goals) - int(base.get('own_goals', 0)),
+                    'assists': int(car.score_info.assists) - int(base.get('assists', 0)),
+                    'saves': int(car.score_info.saves) - int(base.get('saves', 0)),
+                    'shots': int(car.score_info.shots) - int(base.get('shots', 0)),
+                    'demolitions': int(car.score_info.demolitions) - int(base.get('demolitions', 0)),
                 })
             # Match-level info: duration (seconds) and overtime flag
             duration_seconds = int(final_packet.game_info.seconds_elapsed)
